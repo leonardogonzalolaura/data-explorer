@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+:root {
+  --titlebar-height: 2.5rem;
+}
+
+body {
+  @apply bg-gray-950 text-gray-100;
+  margin: 0;
+  overflow: hidden;
+  user-select: none;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-700 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-600;
+}

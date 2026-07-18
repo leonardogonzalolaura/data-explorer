@@ -1,0 +1,133 @@
+import { useState, useCallback, useRef } from "react";
+import Titlebar from "./components/Titlebar";
+import Footer from "./components/Footer";
+import ShortcutLegend from "./components/ShortcutLegend";
+import TabBar from "./components/TabBar";
+import MainContent from "./components/MainContent";
+import SqlEditor from "./components/SqlEditor";
+import { useHotkeys } from "./hooks/useHotkeys";
+import { TauriDataRepository } from "./services/dataRepository";
+import { invoke } from "@tauri-apps/api/core";
+import type { Tab, AppInfo, Dataset } from "./types";
+
+const repository = new TauriDataRepository();
+
+type ViewMode = "table" | "sql";
+
+export default function App() {
+  const [tabs, setTabs] = useState<Tab[]>([]);
+  const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>("table");
+  const tablesRef = useRef<string[]>([]);
+
+  const activeDataset = tabs.find((t) => t.id === activeTabId)?.dataset ?? null;
+
+  const openFile = useCallback(async () => {
+    try {
+      const dataset = await repository.pickAndLoadFile();
+      if (!dataset) return;
+      const tab: Tab = { id: dataset.id, label: dataset.filename, dataset };
+      setTabs((prev) => [...prev, tab]);
+      setActiveTabId(tab.id);
+      setViewMode("table");
+      // Refresh available tables for SQL
+      invoke<string[]>("list_tables").then((t) => { tablesRef.current = t; });
+    } catch (err) {
+      console.error("Error abriendo archivo:", err);
+    }
+  }, []);
+
+  const closeTab = useCallback((id: string) => {
+    setTabs((prev) => {
+      const next = prev.filter((t) => t.id !== id);
+      return next;
+    });
+    setActiveTabId((prev) => {
+      if (prev !== id) return prev;
+      const remaining = tabs.filter((t) => t.id !== id);
+      if (remaining.length === 0) {
+        setViewMode("table");
+        return null;
+      }
+      const idx = tabs.findIndex((t) => t.id === id);
+      const newIdx = Math.min(idx, remaining.length - 1);
+      return remaining[newIdx].id;
+    });
+  }, [tabs]);
+
+  const handleSqlResult = useCallback((dataset: Dataset) => {
+    const tab: Tab = { id: dataset.id, label: dataset.filename, dataset };
+    setTabs((prev) => [...prev, tab]);
+    setActiveTabId(tab.id);
+  }, []);
+
+  const openSqlEditor = useCallback(async () => {
+    try {
+      const tables = await invoke<string[]>("list_tables");
+      tablesRef.current = tables;
+    } catch { /* ignore */ }
+    setViewMode("sql");
+  }, []);
+
+  const handleToggleTheme = useCallback(() => {
+    document.documentElement.classList.toggle("dark");
+  }, []);
+
+  useHotkeys("Ctrl+Shift+O", openFile);
+  useHotkeys("Ctrl+Shift+K", openSqlEditor);
+  useHotkeys("Ctrl+Shift+L", () => setShowShortcuts((v) => !v));
+  useHotkeys("Ctrl+Shift+D", handleToggleTheme);
+  useHotkeys("Ctrl+Shift+W", () => {
+    if (viewMode === "sql") {
+      setViewMode("table");
+      return;
+    }
+    if (activeTabId) closeTab(activeTabId);
+  });
+
+  if (!appInfo) {
+    repository.getAppInfo().then(setAppInfo).catch(() => {});
+  }
+
+  return (
+    <div className="h-screen flex flex-col bg-gray-950 text-gray-100">
+      <Titlebar
+        onOpenFile={openFile}
+        onToggleShortcutLegend={() => setShowShortcuts((v) => !v)}
+        onToggleTheme={handleToggleTheme}
+      />
+
+      {viewMode === "table" && tabs.length > 0 && (
+        <TabBar
+          tabs={tabs}
+          activeTabId={activeTabId}
+          onSelectTab={(id) => { setActiveTabId(id); setViewMode("table"); }}
+          onCloseTab={closeTab}
+        />
+      )}
+
+      <div className="flex-1 flex overflow-hidden">
+        {viewMode === "sql" ? (
+          <SqlEditor
+            tables={tablesRef.current}
+            onResult={handleSqlResult}
+            onClose={() => setViewMode("table")}
+          />
+        ) : (
+          <MainContent activeDataset={activeDataset} onOpenSql={openSqlEditor} />
+        )}
+      </div>
+
+      <Footer
+        version={appInfo?.version ?? "0.1.0"}
+        filename={activeDataset?.filename}
+        rowCount={activeDataset?.total_rows}
+        columnCount={activeDataset?.columns.length}
+      />
+
+      <ShortcutLegend open={showShortcuts} onClose={() => setShowShortcuts(false)} />
+    </div>
+  );
+}
