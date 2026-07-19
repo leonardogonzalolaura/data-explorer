@@ -5,12 +5,17 @@ import type { Dataset, AppInfo } from "../types";
 export interface DataRepository {
   loadFile(path: string): Promise<Dataset>;
   pickAndLoadFile(): Promise<Dataset | null>;
+  loadJsonText(jsonText: string, name?: string): Promise<Dataset>;
   getAppInfo(): Promise<AppInfo>;
 }
 
 export class TauriDataRepository implements DataRepository {
   async loadFile(path: string): Promise<Dataset> {
     return invoke<Dataset>("load_file", { path });
+  }
+
+  async loadJsonText(jsonText: string, name?: string): Promise<Dataset> {
+    return invoke<Dataset>("load_json_text", { jsonText, name: name ?? null });
   }
 
   async pickAndLoadFile(): Promise<Dataset | null> {

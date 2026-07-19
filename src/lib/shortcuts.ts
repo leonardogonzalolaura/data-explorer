@@ -5,6 +5,7 @@ export const SHORTCUTS: Shortcut[] = [
   { key: "E", description: "Exportar datos", category: "Archivo", combo: "Ctrl+Shift+E" },
   { key: "F", description: "Buscar / filtrar", category: "Datos", combo: "Ctrl+Shift+F" },
   { key: "K", description: "Editor SQL", category: "Datos", combo: "Ctrl+Shift+K" },
+  { key: "J", description: "Pegar JSON", category: "Archivo", combo: "Ctrl+Shift+J" },
   { key: "L", description: "Atajos de teclado", category: "General", combo: "Ctrl+Shift+L" },
   { key: "T", description: "Nueva pestaña", category: "General", combo: "Ctrl+Shift+T" },
   { key: "W", description: "Cerrar pestaña", category: "General", combo: "Ctrl+Shift+W" },

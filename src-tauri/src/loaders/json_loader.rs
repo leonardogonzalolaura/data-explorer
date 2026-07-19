@@ -17,45 +17,47 @@ impl Loader for JsonLoader {
     fn load(&self, path: &str) -> Result<Dataset, String> {
         let content = std::fs::read_to_string(path)
             .map_err(|e| format!("Error leyendo JSON: {}", e))?;
-
-        let json: Value = serde_json::from_str(&content)
-            .map_err(|e| format!("Error parseando JSON: {}", e))?;
-
-        let items = extract_array(&json)?;
-        if items.is_empty() {
-            return Ok(Dataset {
-                id: uuid::Uuid::new_v4().to_string(),
-                filename: filename_from_path(path),
-                columns: vec![],
-                rows: vec![],
-                total_rows: 0,
-            });
-        }
-
-        let all_keys = collect_keys(&items);
-        let columns: Vec<ColumnInfo> = all_keys.iter().map(|k| {
-            let dtype = infer_type(&items, k);
-            ColumnInfo { name: k.clone(), dtype }
-        }).collect();
-
-        let display_count = items.len().min(10_000);
-        let rows: Vec<Vec<Value>> = items.iter().take(display_count).map(|item| {
-            let flat = flatten_object(item);
-            columns.iter().map(|col| {
-                flat.get(col.name.as_str()).cloned().unwrap_or(Value::Null)
-            }).collect()
-        }).collect();
-
         let filename = filename_from_path(path);
-
-        Ok(Dataset {
-            id: uuid::Uuid::new_v4().to_string(),
-            filename,
-            columns,
-            total_rows: rows.len(),
-            rows,
-        })
+        parse_json_str(&content, &filename)
     }
+}
+
+pub fn parse_json_str(input: &str, filename: &str) -> Result<Dataset, String> {
+    let json: Value = serde_json::from_str(input)
+        .map_err(|e| format!("Error parseando JSON: {}", e))?;
+
+    let items = extract_array(&json)?;
+    if items.is_empty() {
+        return Ok(Dataset {
+            id: uuid::Uuid::new_v4().to_string(),
+            filename: filename.to_string(),
+            columns: vec![],
+            rows: vec![],
+            total_rows: 0,
+        });
+    }
+
+    let all_keys = collect_keys(&items);
+    let columns: Vec<ColumnInfo> = all_keys.iter().map(|k| {
+        let dtype = infer_type(&items, k);
+        ColumnInfo { name: k.clone(), dtype }
+    }).collect();
+
+    let display_count = items.len().min(10_000);
+    let rows: Vec<Vec<Value>> = items.iter().take(display_count).map(|item| {
+        let flat = flatten_object(item);
+        columns.iter().map(|col| {
+            flat.get(col.name.as_str()).cloned().unwrap_or(Value::Null)
+        }).collect()
+    }).collect();
+
+    Ok(Dataset {
+        id: uuid::Uuid::new_v4().to_string(),
+        filename: filename.to_string(),
+        columns,
+        total_rows: rows.len(),
+        rows,
+    })
 }
 
 fn filename_from_path(path: &str) -> String {
@@ -70,7 +72,25 @@ fn extract_array(json: &Value) -> Result<Vec<Value>, String> {
     match json {
         Value::Array(arr) => Ok(arr.clone()),
         Value::Object(map) => {
-            // Buscar la primera propiedad que sea un array
+            // First pass: non-empty array at top level
+            for val in map.values() {
+                if let Value::Array(arr) = val {
+                    if !arr.is_empty() {
+                        return Ok(arr.clone());
+                    }
+                }
+            }
+            // Second pass: recurse into nested objects
+            for val in map.values() {
+                if let Value::Object(_) = val {
+                    if let Ok(arr) = extract_array(val) {
+                        if !arr.is_empty() {
+                            return Ok(arr);
+                        }
+                    }
+                }
+            }
+            // Fallback: any empty array
             for val in map.values() {
                 if let Value::Array(arr) = val {
                     return Ok(arr.clone());

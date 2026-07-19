@@ -9,6 +9,9 @@ import {
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Dataset } from "../types";
 import type { ColumnDef, SortingState } from "@tanstack/react-table";
+import JsonTreeView from "./JsonTreeView";
+import JsonCellValue from "./JsonCellValue";
+import NestedTableModal from "./NestedTableModal";
 
 interface DataTableProps {
   dataset: Dataset;
@@ -35,14 +38,17 @@ function SortIcon({ direction }: { direction: "asc" | "desc" | false }) {
 }
 
 type ViewMode = "virtual" | "paged";
+type ViewFormat = "table" | "tree";
 const PAGE_SIZES = [100, 500, 1000];
 
 export default function DataTable({ dataset, onOpenSql }: DataTableProps) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("virtual");
+  const [viewFormat, setViewFormat] = useState<ViewFormat>("table");
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(500);
+  const [nestedTable, setNestedTable] = useState<{ jsonStr: string; label: string; source: string } | null>(null);
 
   const columns = useMemo<ColumnDef<unknown[]>[]>(
     () =>
@@ -69,14 +75,8 @@ export default function DataTable({ dataset, onOpenSql }: DataTableProps) {
           </button>
         ),
         accessorFn: (row: unknown[]) => (row as unknown[])[colIdx],
-        cell: (info) => {
-          const val = info.getValue();
-          if (val === null || val === undefined) {
-            return <span className="text-gray-600 italic">null</span>;
-          }
-          return String(val);
-        },
-        size: Math.max(120, col.name.length * 10 + 60),
+        cell: (info) => <JsonCellValue value={info.getValue()} onOpenNested={(s, l) => setNestedTable({ jsonStr: s, label: l, source: `${dataset.filename} → ${col.name} · fila ${info.row.index + 1}` })} />,
+        size: Math.max(200, col.name.length * 10 + 60),
         enableSorting: true,
       })),
     [dataset.columns, sorting]
@@ -103,7 +103,7 @@ export default function DataTable({ dataset, onOpenSql }: DataTableProps) {
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-    defaultColumn: { minSize: 60, size: 150 },
+    defaultColumn: { minSize: 100, size: 200 },
   });
 
   const parentRef = useRef<HTMLDivElement>(null);
@@ -132,7 +132,12 @@ export default function DataTable({ dataset, onOpenSql }: DataTableProps) {
   }, []);
 
   return (
+    <>
     <div className="flex-1 flex flex-col min-h-0">
+      {viewFormat === "tree" ? (
+        <JsonTreeView dataset={dataset} onToggleFormat={() => setViewFormat("table")} />
+      ) : (
+        <>
       {/* Toolbar */}
       <div className="flex items-center gap-3 px-4 py-2 text-xs text-gray-500 border-b border-gray-800 shrink-0 overflow-x-auto">
         <span className="font-medium text-gray-300 whitespace-nowrap">{dataset.filename}</span>
@@ -184,6 +189,13 @@ export default function DataTable({ dataset, onOpenSql }: DataTableProps) {
           className="flex items-center gap-1 text-[11px] text-blue-400 hover:text-blue-300 transition-colors whitespace-nowrap"
         >
           {viewMode === "virtual" ? "Paginado" : "Virtual"}
+        </button>
+        <span className="text-gray-600 shrink-0">|</span>
+        <button
+          onClick={() => setViewFormat((f) => (f === "table" ? "tree" : "table"))}
+          className="flex items-center gap-1 text-[11px] text-emerald-400 hover:text-emerald-300 transition-colors whitespace-nowrap"
+        >
+          {viewFormat === "table" ? "JSON" : "Tabla"}
         </button>
       </div>
 
@@ -345,6 +357,17 @@ export default function DataTable({ dataset, onOpenSql }: DataTableProps) {
           </button>
         </div>
       )}
+        </>
+      )}
     </div>
+    {nestedTable && (
+      <NestedTableModal
+        jsonStr={nestedTable.jsonStr}
+        label={nestedTable.label}
+        source={nestedTable.source}
+        onClose={() => setNestedTable(null)}
+      />
+    )}
+    </>
   );
 }

@@ -9,6 +9,8 @@ import {
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Dataset } from "../types";
 import type { ColumnDef, SortingState } from "@tanstack/react-table";
+import JsonCellValue from "./JsonCellValue";
+import NestedTableModal from "./NestedTableModal";
 
 interface SqlResultsProps {
   dataset: Dataset;
@@ -36,6 +38,7 @@ export default function SqlResults({ dataset }: SqlResultsProps) {
   const [viewMode, setViewMode] = useState<ViewMode>("virtual");
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(500);
+  const [nestedTable, setNestedTable] = useState<{ jsonStr: string; label: string; source: string } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const allRows = useMemo(() => dataset.rows, [dataset.rows]);
@@ -70,14 +73,8 @@ export default function SqlResults({ dataset }: SqlResultsProps) {
           </button>
         ),
         accessorFn: (row: unknown[]) => (row as unknown[])[colIdx],
-        cell: (info) => {
-          const val = info.getValue();
-          if (val === null || val === undefined) {
-            return <span className="text-gray-600 italic">null</span>;
-          }
-          return String(val);
-        },
-        size: Math.max(120, col.name.length * 10 + 60),
+        cell: (info) => <JsonCellValue value={info.getValue()} onOpenNested={(s, l) => setNestedTable({ jsonStr: s, label: l, source: `SQL Result → ${col.name} · fila ${info.row.index + 1}` })} />,
+        size: Math.max(200, col.name.length * 10 + 60),
         enableSorting: true,
       })),
     [dataset.columns, sorting]
@@ -92,7 +89,7 @@ export default function SqlResults({ dataset }: SqlResultsProps) {
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-    defaultColumn: { minSize: 60, size: 150 },
+    defaultColumn: { minSize: 100, size: 200 },
   });
 
   const rows = table.getRowModel().rows;
@@ -120,6 +117,7 @@ export default function SqlResults({ dataset }: SqlResultsProps) {
   }, []);
 
   return (
+    <>
     <div className="flex-1 flex flex-col min-h-0">
       {/* Toolbar */}
       <div className="flex items-center gap-3 px-4 py-1.5 text-xs text-gray-500 border-b border-gray-800 shrink-0 overflow-x-auto">
@@ -309,5 +307,14 @@ export default function SqlResults({ dataset }: SqlResultsProps) {
         </div>
       )}
     </div>
+    {nestedTable && (
+      <NestedTableModal
+        jsonStr={nestedTable.jsonStr}
+        label={nestedTable.label}
+        source={nestedTable.source}
+        onClose={() => setNestedTable(null)}
+      />
+    )}
+    </>
   );
 }

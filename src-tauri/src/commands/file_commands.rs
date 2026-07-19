@@ -5,6 +5,29 @@ use std::sync::{Arc, Mutex};
 use tauri::State;
 
 #[tauri::command]
+pub fn load_json_text(
+    json_text: String,
+    name: Option<String>,
+    engine: State<'_, Mutex<SqlEngine>>,
+) -> Result<Dataset, String> {
+    let label = name.clone().unwrap_or_else(|| "JSON pegado".to_string());
+    let dataset = crate::loaders::json_loader::parse_json_str(&json_text, &label)?;
+
+    if let Ok(mut engine) = engine.lock() {
+        let table_name = name
+            .map(|n| n.chars().filter(|c| c.is_alphanumeric() || *c == '_').collect::<String>())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "json_pegado".to_string());
+        match crate::loaders::polars_utils::dataset_to_polars_df(&dataset) {
+            Ok(df) => engine.register(&table_name, df, "pegado"),
+            Err(e) => eprintln!("[SQL] No se pudo crear DataFrame desde JSON pegado: {}", e),
+        }
+    }
+
+    Ok(dataset)
+}
+
+#[tauri::command]
 pub fn load_file(
     path: String,
     loader_service: State<'_, Arc<LoaderService>>,
@@ -13,16 +36,34 @@ pub fn load_file(
     let dataset = loader_service.load(&path)?;
 
     if let Ok(mut engine) = engine.lock() {
-        match try_load_df(&path) {
-            Ok(df) => {
-                let name = std::path::Path::new(&path)
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("data");
-                engine.register(name, df);
+        let p = std::path::Path::new(&path);
+        let source = p.extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("file")
+            .to_lowercase();
+        let is_json = source == "json";
+
+        if is_json {
+            match crate::loaders::polars_utils::dataset_to_polars_df(&dataset) {
+                Ok(df) => {
+                    let name = p.file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("data");
+                    engine.register(name, df, &source);
+                }
+                Err(e) => eprintln!("[SQL] No se pudo crear DataFrame desde JSON: {}", e),
             }
-            Err(e) => {
-                eprintln!("[SQL] No se pudo cargar DataFrame para SQL engine: {}", e);
+        } else {
+            match try_load_df(&path) {
+                Ok(df) => {
+                    let name = p.file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("data");
+                    engine.register(name, df, &source);
+                }
+                Err(e) => {
+                    eprintln!("[SQL] No se pudo cargar DataFrame para SQL engine: {}", e);
+                }
             }
         }
     }

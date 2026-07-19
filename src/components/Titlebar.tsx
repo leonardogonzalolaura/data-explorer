@@ -5,6 +5,7 @@ import WindowControls from "./WindowControls";
 interface TitlebarProps {
   title?: string;
   onOpenFile?: () => void;
+  onOpenPasteModal?: () => void;
   onExport?: () => void;
   onToggleShortcutLegend?: () => void;
   onToggleTheme?: () => void;
@@ -52,6 +53,7 @@ function MenuDropdown({ items, onClose }: { items: MenuItem[]; onClose: () => vo
 export default function Titlebar({
   title = "Data Explorer",
   onOpenFile,
+  onOpenPasteModal,
   onExport,
   onToggleShortcutLegend,
   onToggleTheme,
@@ -61,6 +63,7 @@ export default function Titlebar({
   const menus: Record<string, MenuItem[]> = {
     Archivo: [
       { label: "Abrir archivo...", action: onOpenFile, shortcut: "Ctrl+Shift+O" },
+      { label: "Pegar JSON...", action: onOpenPasteModal, shortcut: "Ctrl+Shift+J" },
       { label: "Exportar datos...", action: onExport, shortcut: "Ctrl+Shift+E", disabled: true },
       { separator: true },
       { label: "Salir", action: async () => {

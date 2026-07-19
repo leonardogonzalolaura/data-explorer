@@ -1,5 +1,6 @@
 use crate::models::{ColumnInfo, Dataset};
 use polars::prelude::*;
+use serde_json::Value;
 use std::path::Path;
 
 pub fn dataset_from_df(df: DataFrame, path: &str) -> Result<Dataset, String> {
@@ -69,6 +70,34 @@ pub fn df_to_rows(df: &DataFrame, max_rows: usize) -> Vec<Vec<serde_json::Value>
         .collect()
 }
 
+pub fn dataset_to_polars_df(dataset: &Dataset) -> Result<DataFrame, String> {
+    let mut series_vec: Vec<Column> = Vec::with_capacity(dataset.columns.len());
+
+    for col in &dataset.columns {
+        let col_idx = dataset.columns.iter().position(|c| c.name == col.name).unwrap();
+        let values: Vec<&Value> = dataset.rows.iter().map(|row| &row[col_idx]).collect();
+
+        let name = col.name.as_str().into();
+        let column = match col.dtype.as_str() {
+            "f64" | "i64" | "u64" | "i32" | "u32" | "i16" | "u16" | "i8" | "u8" | "decimal" => {
+                let nums: Vec<Option<f64>> = values.iter().map(|v| v.as_f64()).collect();
+                Column::new(name, &nums)
+            }
+            "bool" => {
+                let bools: Vec<Option<bool>> = values.iter().map(|v| v.as_bool()).collect();
+                Column::new(name, &bools)
+            }
+            _ => {
+                let strs: Vec<Option<&str>> = values.iter().map(|v| v.as_str()).collect();
+                Column::new(name, &strs)
+            }
+        };
+        series_vec.push(column);
+    }
+
+    DataFrame::new(series_vec).map_err(|e| format!("Error creando DataFrame: {}", e))
+}
+
 pub fn format_dtype(dt: &DataType) -> String {
     match dt {
         DataType::Int8 => "i8",
@@ -111,6 +140,7 @@ fn polars_value_to_json(value: AnyValue) -> serde_json::Value {
             serde_json::Number::from_f64(v).map_or(serde_json::Value::Null, |n| n.into())
         }
         AnyValue::String(v) => serde_json::Value::String(v.to_string()),
+        AnyValue::StringOwned(v) => serde_json::Value::String(v.to_string()),
         AnyValue::Date(v) => {
             let d = polars::export::arrow::temporal_conversions::date32_to_date(v);
             serde_json::Value::String(d.format("%Y-%m-%d").to_string())

@@ -24,6 +24,11 @@ export interface Shortcut {
   combo: string;
 }
 
+export interface TableInfo {
+  name: string;
+  source: string;
+}
+
 export type MenuItem = {
   label?: string;
   action?: () => void;

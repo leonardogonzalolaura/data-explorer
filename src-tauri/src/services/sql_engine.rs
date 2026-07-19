@@ -1,11 +1,18 @@
 use crate::models::Dataset;
 use polars::prelude::*;
 use polars::sql::SQLContext;
+use serde::Serialize;
 use std::collections::HashMap;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TableInfo {
+    pub name: String,
+    pub source: String,
+}
 
 pub struct SqlEngine {
     ctx: SQLContext,
-    tables: HashMap<String, String>,
+    tables: HashMap<String, (String, String)>,
 }
 
 impl SqlEngine {
@@ -16,13 +23,13 @@ impl SqlEngine {
         }
     }
 
-    pub fn register(&mut self, name: &str, df: DataFrame) {
+    pub fn register(&mut self, name: &str, df: DataFrame, source: &str) {
         let table_name = name
             .to_lowercase()
             .replace(['.', '-', ' '], "_");
         let lf: LazyFrame = df.lazy();
         self.ctx.register(&table_name, lf);
-        self.tables.insert(table_name, name.to_string());
+        self.tables.insert(table_name, (name.to_string(), source.to_string()));
     }
 
     pub fn execute(&mut self, sql: &str) -> Result<Dataset, String> {
@@ -61,9 +68,16 @@ impl SqlEngine {
         })
     }
 
-    pub fn list_tables(&self) -> Vec<String> {
-        let mut names: Vec<String> = self.tables.keys().cloned().collect();
-        names.sort();
+    pub fn list_tables(&self) -> Vec<TableInfo> {
+        let mut names: Vec<TableInfo> = self
+            .tables
+            .iter()
+            .map(|(k, v)| TableInfo {
+                name: k.clone(),
+                source: v.1.clone(),
+            })
+            .collect();
+        names.sort_by(|a, b| a.name.cmp(&b.name));
         names
     }
 }

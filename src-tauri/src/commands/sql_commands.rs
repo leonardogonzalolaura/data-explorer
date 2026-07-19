@@ -1,5 +1,5 @@
 use crate::models::Dataset;
-use crate::services::sql_engine::SqlEngine;
+use crate::services::sql_engine::{SqlEngine, TableInfo};
 use std::sync::Mutex;
 
 #[tauri::command]
@@ -14,7 +14,7 @@ pub fn execute_sql(
 #[tauri::command]
 pub fn list_tables(
     engine: tauri::State<'_, Mutex<SqlEngine>>,
-) -> Vec<String> {
+) -> Vec<TableInfo> {
     match engine.lock() {
         Ok(engine) => engine.list_tables(),
         Err(_) => vec![],

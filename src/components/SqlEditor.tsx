@@ -5,14 +5,62 @@ import { sql, SQLite } from "@codemirror/lang-sql";
 import { defaultKeymap } from "@codemirror/commands";
 import { syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
 import { invoke } from "@tauri-apps/api/core";
-import type { Dataset } from "../types";
+import type { Dataset, TableInfo } from "../types";
 import SqlResults from "./SqlResults";
 
 interface SqlEditorProps {
-  tables: string[];
+  tables: TableInfo[];
   onResult: (dataset: Dataset) => void;
   onClose: () => void;
 }
+
+function SourceIcon({ source }: { source: string }) {
+  const s = source.toLowerCase();
+  if (s === "csv" || s === "tsv") {
+    return (
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" />
+      </svg>
+    );
+  }
+  if (s === "parquet") {
+    return (
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" /><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+      </svg>
+    );
+  }
+  if (s === "json" || s === "pegado") {
+    return (
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" />
+      </svg>
+    );
+  }
+  if (s === "xlsx" || s === "xls" || s === "xlsm") {
+    return (
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="8" y1="16" x2="16" y2="16" /><line x1="8" y1="12" x2="16" y2="12" />
+      </svg>
+    );
+  }
+  return (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
+
+const sourceColors: Record<string, string> = {
+  csv: "text-yellow-400",
+  tsv: "text-yellow-400/80",
+  parquet: "text-blue-400",
+  json: "text-green-400",
+  pegado: "text-emerald-400",
+  xlsx: "text-emerald-400",
+  xls: "text-emerald-400",
+  xlsm: "text-emerald-400",
+};
 
 const darkTheme = EditorView.theme(
   {
@@ -82,7 +130,7 @@ export default function SqlEditor({ tables, onResult, onClose }: SqlEditorProps)
   useEffect(() => {
     if (!editorRef.current || viewRef.current) return;
     const state = EditorState.create({
-      doc: `SELECT * FROM ${tables[0] ?? "data"} LIMIT 100`,
+      doc: `SELECT * FROM ${tables[0]?.name ?? "data"} LIMIT 100`,
       extensions,
     });
     const view = new EditorView({ state, parent: editorRef.current });
@@ -138,9 +186,19 @@ export default function SqlEditor({ tables, onResult, onClose }: SqlEditorProps)
           </svg>
         </div>
         {tables.length > 0 && (
-          <span className="text-[11px] text-gray-500 truncate max-w-[200px]">
-            {tables.join(", ")}
-          </span>
+          <div className="flex items-center gap-2 truncate max-w-[400px]" title={`Tablas disponibles para consultas SQL. Usá SELECT, JOIN, WHERE, GROUP BY, etc.`}>
+            {tables.map((t, i) => {
+              const color = sourceColors[t.source.toLowerCase()] ?? "text-gray-400";
+              return (
+                <span key={t.name} className={`inline-flex items-center gap-1 shrink-0 ${color}`}>
+                  {i > 0 && <span className="text-gray-700 mr-0.5">|</span>}
+                  <SourceIcon source={t.source} />
+                  <span className="text-[11px] font-medium">{t.name}</span>
+                  <span className="text-[10px] opacity-60">{t.source}</span>
+                </span>
+              );
+            })}
+          </div>
         )}
         <div className="flex-1" />
         <button

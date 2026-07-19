@@ -42,6 +42,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::info::get_app_info,
             file_commands::load_file,
+            file_commands::load_json_text,
             commands::sql_commands::execute_sql,
             commands::sql_commands::list_tables,
         ])

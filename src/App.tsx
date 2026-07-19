@@ -5,10 +5,11 @@ import ShortcutLegend from "./components/ShortcutLegend";
 import TabBar from "./components/TabBar";
 import MainContent from "./components/MainContent";
 import SqlEditor from "./components/SqlEditor";
+import PasteJsonModal from "./components/PasteJsonModal";
 import { useHotkeys } from "./hooks/useHotkeys";
 import { TauriDataRepository } from "./services/dataRepository";
 import { invoke } from "@tauri-apps/api/core";
-import type { Tab, AppInfo, Dataset } from "./types";
+import type { Tab, AppInfo, Dataset, TableInfo } from "./types";
 
 const repository = new TauriDataRepository();
 
@@ -18,9 +19,10 @@ export default function App() {
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showPasteModal, setShowPasteModal] = useState(false);
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("table");
-  const tablesRef = useRef<string[]>([]);
+  const tablesRef = useRef<TableInfo[]>([]);
 
   const activeDataset = tabs.find((t) => t.id === activeTabId)?.dataset ?? null;
 
@@ -33,7 +35,7 @@ export default function App() {
       setActiveTabId(tab.id);
       setViewMode("table");
       // Refresh available tables for SQL
-      invoke<string[]>("list_tables").then((t) => { tablesRef.current = t; });
+    invoke<TableInfo[]>("list_tables").then((t) => { tablesRef.current = t; });
     } catch (err) {
       console.error("Error abriendo archivo:", err);
     }
@@ -65,10 +67,19 @@ export default function App() {
 
   const openSqlEditor = useCallback(async () => {
     try {
-      const tables = await invoke<string[]>("list_tables");
+      const tables = await invoke<TableInfo[]>("list_tables");
       tablesRef.current = tables;
     } catch { /* ignore */ }
     setViewMode("sql");
+  }, []);
+
+  const handleLoadJson = useCallback(async (jsonText: string, name?: string) => {
+    const dataset = await repository.loadJsonText(jsonText, name);
+    const tab: Tab = { id: dataset.id, label: dataset.filename, dataset };
+    setTabs((prev) => [...prev, tab]);
+    setActiveTabId(tab.id);
+    setViewMode("table");
+    invoke<TableInfo[]>("list_tables").then((t) => { tablesRef.current = t; });
   }, []);
 
   const handleToggleTheme = useCallback(() => {
@@ -76,6 +87,7 @@ export default function App() {
   }, []);
 
   useHotkeys("Ctrl+Shift+O", openFile);
+  useHotkeys("Ctrl+Shift+J", () => setShowPasteModal((v) => !v));
   useHotkeys("Ctrl+Shift+K", openSqlEditor);
   useHotkeys("Ctrl+Shift+L", () => setShowShortcuts((v) => !v));
   useHotkeys("Ctrl+Shift+D", handleToggleTheme);
@@ -95,6 +107,7 @@ export default function App() {
     <div className="h-screen flex flex-col bg-gray-950 text-gray-100">
       <Titlebar
         onOpenFile={openFile}
+        onOpenPasteModal={() => setShowPasteModal(true)}
         onToggleShortcutLegend={() => setShowShortcuts((v) => !v)}
         onToggleTheme={handleToggleTheme}
       />
@@ -116,7 +129,7 @@ export default function App() {
             onClose={() => setViewMode("table")}
           />
         ) : (
-          <MainContent activeDataset={activeDataset} onOpenSql={openSqlEditor} />
+          <MainContent activeDataset={activeDataset} onOpenSql={openSqlEditor} onOpenPasteModal={() => setShowPasteModal(true)} />
         )}
       </div>
 
@@ -128,6 +141,10 @@ export default function App() {
       />
 
       <ShortcutLegend open={showShortcuts} onClose={() => setShowShortcuts(false)} />
+
+      {showPasteModal && (
+        <PasteJsonModal onLoadJson={handleLoadJson} onClose={() => setShowPasteModal(false)} />
+      )}
     </div>
   );
 }
