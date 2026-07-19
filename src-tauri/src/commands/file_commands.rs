@@ -46,7 +46,8 @@ pub fn load_file(
         if is_json {
             match crate::loaders::polars_utils::dataset_to_polars_df(&dataset) {
                 Ok(df) => {
-                    let name = p.file_stem()
+                    let name = std::path::Path::new(&dataset.filename)
+                        .file_stem()
                         .and_then(|s| s.to_str())
                         .unwrap_or("data");
                     engine.register(name, df, &source);
@@ -56,7 +57,8 @@ pub fn load_file(
         } else {
             match try_load_df(&path) {
                 Ok(df) => {
-                    let name = p.file_stem()
+                    let name = std::path::Path::new(&dataset.filename)
+                        .file_stem()
                         .and_then(|s| s.to_str())
                         .unwrap_or("data");
                     engine.register(name, df, &source);

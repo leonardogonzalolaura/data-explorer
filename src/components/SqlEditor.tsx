@@ -88,6 +88,7 @@ export default function SqlEditor({ tables, onResult, onClose }: SqlEditorProps)
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<Dataset | null>(null);
+  const [copiedTable, setCopiedTable] = useState<string | null>(null);
   const [editorPct, setEditorPct] = useState(10);
   const dragging = useRef(false);
 
@@ -193,7 +194,17 @@ export default function SqlEditor({ tables, onResult, onClose }: SqlEditorProps)
                 <span key={t.name} className={`inline-flex items-center gap-1 shrink-0 ${color}`}>
                   {i > 0 && <span className="text-gray-700 mr-0.5">|</span>}
                   <SourceIcon source={t.source} />
-                  <span className="text-[11px] font-medium">{t.name}</span>
+                  <span
+                    className="text-[11px] font-medium cursor-pointer hover:text-blue-300 transition-colors"
+                    onClick={() => {
+                      navigator.clipboard.writeText(t.name);
+                      setCopiedTable(t.name);
+                      setTimeout(() => setCopiedTable(null), 1500);
+                    }}
+                    title="Copiar nombre de tabla"
+                  >
+                    {copiedTable === t.name ? "✓ Copiado" : t.name}
+                  </span>
                   <span className="text-[10px] opacity-60">{t.source}</span>
                 </span>
               );

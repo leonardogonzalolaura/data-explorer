@@ -183,8 +183,7 @@ pub async fn load_s3_file(
     dataset.filename = parts.join("_");
 
     if let Ok(mut engine) = engine.lock() {
-        let p = std::path::Path::new(&key);
-        let name = p
+        let name = std::path::Path::new(&dataset.filename)
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("data");
