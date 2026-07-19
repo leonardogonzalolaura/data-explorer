@@ -29,6 +29,10 @@ chrono = "0.4"
 polars = { version = "0.45", features = ["parquet", "csv", "json", "lazy", "strings", "dtype-full", "dtype-date", "dtype-datetime", "dtype-time", "rows", "dtype-decimal", "sql"] }
 calamine = "0.26"
 uuid = { version = "1", features = ["v4"] }
+aws-sdk-s3 = "1"
+aws-config = "1"
+tokio = { version = "1", features = ["rt", "macros"] }
+tempfile = "3"
 
 [dev-dependencies]
 polars = "0.45"

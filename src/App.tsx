@@ -6,10 +6,11 @@ import TabBar from "./components/TabBar";
 import MainContent from "./components/MainContent";
 import SqlEditor from "./components/SqlEditor";
 import PasteJsonModal from "./components/PasteJsonModal";
+import S3ConnectionModal from "./components/S3ConnectionModal";
 import { useHotkeys } from "./hooks/useHotkeys";
 import { TauriDataRepository } from "./services/dataRepository";
 import { invoke } from "@tauri-apps/api/core";
-import type { Tab, AppInfo, Dataset, TableInfo } from "./types";
+import type { Tab, AppInfo, Dataset, TableInfo, S3Credentials } from "./types";
 
 const repository = new TauriDataRepository();
 
@@ -20,6 +21,7 @@ export default function App() {
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showPasteModal, setShowPasteModal] = useState(false);
+  const [showS3Modal, setShowS3Modal] = useState(false);
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("table");
   const tablesRef = useRef<TableInfo[]>([]);
@@ -82,6 +84,15 @@ export default function App() {
     invoke<TableInfo[]>("list_tables").then((t) => { tablesRef.current = t; });
   }, []);
 
+  const handleLoadS3 = useCallback(async (uri: string, credentials: S3Credentials) => {
+    const dataset = await repository.loadS3File(uri, credentials);
+    const tab: Tab = { id: dataset.id, label: dataset.filename, dataset };
+    setTabs((prev) => [...prev, tab]);
+    setActiveTabId(tab.id);
+    setViewMode("table");
+    invoke<TableInfo[]>("list_tables").then((t) => { tablesRef.current = t; });
+  }, []);
+
   const handleToggleTheme = useCallback(() => {
     document.documentElement.classList.toggle("dark");
   }, []);
@@ -90,6 +101,7 @@ export default function App() {
   useHotkeys("Ctrl+Shift+J", () => setShowPasteModal((v) => !v));
   useHotkeys("Ctrl+Shift+K", openSqlEditor);
   useHotkeys("Ctrl+Shift+L", () => setShowShortcuts((v) => !v));
+  useHotkeys("Ctrl+Shift+S", () => setShowS3Modal((v) => !v));
   useHotkeys("Ctrl+Shift+D", handleToggleTheme);
   useHotkeys("Ctrl+Shift+W", () => {
     if (viewMode === "sql") {
@@ -108,6 +120,7 @@ export default function App() {
       <Titlebar
         onOpenFile={openFile}
         onOpenPasteModal={() => setShowPasteModal(true)}
+        onOpenS3={() => setShowS3Modal(true)}
         onToggleShortcutLegend={() => setShowShortcuts((v) => !v)}
         onToggleTheme={handleToggleTheme}
       />
@@ -129,7 +142,7 @@ export default function App() {
             onClose={() => setViewMode("table")}
           />
         ) : (
-          <MainContent activeDataset={activeDataset} onOpenSql={openSqlEditor} onOpenPasteModal={() => setShowPasteModal(true)} />
+          <MainContent activeDataset={activeDataset} onOpenSql={openSqlEditor} onOpenPasteModal={() => setShowPasteModal(true)} onOpenS3={() => setShowS3Modal(true)} />
         )}
       </div>
 
@@ -144,6 +157,14 @@ export default function App() {
 
       {showPasteModal && (
         <PasteJsonModal onLoadJson={handleLoadJson} onClose={() => setShowPasteModal(false)} />
+      )}
+
+      {showS3Modal && (
+        <S3ConnectionModal
+          repository={repository}
+          onLoadS3={handleLoadS3}
+          onClose={() => setShowS3Modal(false)}
+        />
       )}
     </div>
   );

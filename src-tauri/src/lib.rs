@@ -45,6 +45,14 @@ pub fn run() {
             file_commands::load_json_text,
             commands::sql_commands::execute_sql,
             commands::sql_commands::list_tables,
+            commands::s3_commands::load_s3_file,
+            commands::s3_commands::list_s3_objects,
+            commands::s3_commands::list_s3_profiles,
+            commands::s3_commands::save_s3_profile,
+            commands::s3_commands::delete_s3_profile,
+            commands::s3_commands::list_s3_buckets,
+            commands::s3_commands::save_s3_bucket,
+            commands::s3_commands::delete_s3_bucket,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

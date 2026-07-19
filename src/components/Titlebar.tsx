@@ -6,6 +6,7 @@ interface TitlebarProps {
   title?: string;
   onOpenFile?: () => void;
   onOpenPasteModal?: () => void;
+  onOpenS3?: () => void;
   onExport?: () => void;
   onToggleShortcutLegend?: () => void;
   onToggleTheme?: () => void;
@@ -54,6 +55,7 @@ export default function Titlebar({
   title = "Data Explorer",
   onOpenFile,
   onOpenPasteModal,
+  onOpenS3,
   onExport,
   onToggleShortcutLegend,
   onToggleTheme,
@@ -63,6 +65,7 @@ export default function Titlebar({
   const menus: Record<string, MenuItem[]> = {
     Archivo: [
       { label: "Abrir archivo...", action: onOpenFile, shortcut: "Ctrl+Shift+O" },
+      { label: "Conectar S3...", action: onOpenS3, shortcut: "Ctrl+Shift+S" },
       { label: "Pegar JSON...", action: onOpenPasteModal, shortcut: "Ctrl+Shift+J" },
       { label: "Exportar datos...", action: onExport, shortcut: "Ctrl+Shift+E", disabled: true },
       { separator: true },

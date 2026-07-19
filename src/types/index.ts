@@ -29,6 +29,25 @@ export interface TableInfo {
   source: string;
 }
 
+export interface S3Credentials {
+  access_key_id: string;
+  secret_access_key: string;
+  region: string;
+  endpoint?: string | null;
+}
+
+export interface S3Profile {
+  name: string;
+  credentials: S3Credentials;
+}
+
+export interface S3Object {
+  key: string;
+  size: number;
+  is_dir: boolean;
+  last_modified: string;
+}
+
 export type MenuItem = {
   label?: string;
   action?: () => void;

@@ -5,49 +5,82 @@ interface MainContentProps {
   activeDataset: Dataset | null;
   onOpenSql?: () => void;
   onOpenPasteModal?: () => void;
+  onOpenS3?: () => void;
 }
 
-export default function MainContent({ activeDataset, onOpenSql, onOpenPasteModal }: MainContentProps) {
+export default function MainContent({ activeDataset, onOpenSql, onOpenPasteModal, onOpenS3 }: MainContentProps) {
   if (!activeDataset) {
     return (
-      <main className="flex-1 flex flex-col items-center justify-center p-8 overflow-auto">
-        <div className="text-center text-gray-600 max-w-lg w-full">
-          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mx-auto mb-4 opacity-40">
-            <path d="M3 3v18h18" />
-            <path d="M7 16l4-8 4 4 4-6" />
-          </svg>
-          <p className="text-lg font-medium mb-1">Data Explorer</p>
-          <p className="text-sm">Abre un archivo o conecta S3 para comenzar</p>
-          <div className="flex items-center justify-center gap-3 mt-4 flex-wrap">
-            <span className="text-xs text-gray-700">
-              <kbd className="bg-gray-800 border border-gray-700 rounded px-1.5 py-0.5 font-mono">Ctrl+Shift+O</kbd>
-              Abrir archivo
-            </span>
-            <span className="text-xs text-gray-700">
-              <kbd className="bg-gray-800 border border-gray-700 rounded px-1.5 py-0.5 font-mono">Ctrl+Shift+K</kbd>
-              SQL
-            </span>
-            <span className="text-xs text-gray-700">
-              <kbd className="bg-gray-800 border border-gray-700 rounded px-1.5 py-0.5 font-mono">Ctrl+Shift+L</kbd>
-              Atajos
-            </span>
-            <span className="text-xs text-gray-700">
-              <kbd className="bg-gray-800 border border-gray-700 rounded px-1.5 py-0.5 font-mono">Ctrl+Shift+J</kbd>
-              Pegar JSON
-            </span>
+      <main className="flex-1 flex items-center justify-center p-8 overflow-auto">
+        <div className="flex flex-col items-center gap-8 max-w-sm w-full">
+          {/* Logo / icon */}
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500/10 to-blue-500/5 border border-blue-500/10 flex items-center justify-center">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 3v18h18" />
+              <path d="M7 16l4-8 4 4 4-6" />
+            </svg>
           </div>
 
-          {onOpenPasteModal && (
-            <div className="mt-5 flex items-center justify-center gap-2 text-xs">
-              <span className="text-gray-600 shrink-0">ó</span>
-              <button
-                onClick={onOpenPasteModal}
-                className="bg-gray-800 border border-gray-700 hover:bg-gray-700 text-gray-300 rounded px-2.5 py-1 font-mono transition-colors cursor-pointer"
-              >
-                Pegar JSON
+          {/* Title + subtitle */}
+          <div className="text-center">
+            <h1 className="text-lg font-medium text-gray-200">Data Explorer</h1>
+            <p className="text-sm text-gray-600 mt-1">Navegá, consultá y explorá tus datos</p>
+          </div>
+
+          {/* Shortcut chips */}
+          <div className="flex flex-wrap justify-center gap-2 max-w-xs">
+            {[
+              { keys: "Ctrl+Shift+O", label: "Abrir archivo" },
+              { keys: "Ctrl+Shift+J", label: "Pegar JSON" },
+              { keys: "Ctrl+Shift+K", label: "SQL" },
+              { keys: "Ctrl+Shift+S", label: "Conectar S3" },
+            ].map(({ keys, label }) => (
+              <span key={keys} className="inline-flex items-center gap-1.5 bg-gray-900 border border-gray-800 rounded-full px-2.5 py-1">
+                <kbd className="text-[10px] font-mono text-blue-400 bg-blue-500/10 rounded px-1 py-0.5">{keys}</kbd>
+                <span className="text-[11px] text-gray-500">{label}</span>
+              </span>
+            ))}
+          </div>
+
+          {/* Divider */}
+          <div className="flex items-center gap-3 w-full">
+            <div className="flex-1 h-px bg-gray-800" />
+            <span className="text-[11px] text-gray-600 font-medium">ACCIONES RÁPIDAS</span>
+            <div className="flex-1 h-px bg-gray-800" />
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex flex-col gap-2 w-full">
+            {onOpenPasteModal && (
+              <button onClick={onOpenPasteModal} className="flex items-center gap-2.5 w-full px-3.5 py-2.5 rounded-lg bg-gray-900 border border-gray-800 hover:border-blue-500/30 hover:bg-gray-800/50 transition-all group cursor-pointer">
+                <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0 group-hover:bg-blue-500/20 transition-colors">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="14" y="2" width="8" height="8" rx="2" ry="2" /><path d="M3 7h6a2 2 0 0 1 2 2v2" /><path d="M17 17h2a2 2 0 0 0 2-2v-4" /><path d="M3 17h2" /><path d="M9 21h4" /><rect x="3" y="13" width="4" height="4" rx="1" />
+                  </svg>
+                </div>
+                <div className="flex-1 text-left">
+                  <p className="text-[12px] font-medium text-gray-300">Pegar JSON</p>
+                  <p className="text-[10px] text-gray-600">Copiá JSON al portapapeles y cargalo</p>
+                </div>
+                <kbd className="text-[10px] font-mono text-gray-600 bg-gray-800 rounded px-1.5 py-0.5 shrink-0">Ctrl+Shift+J</kbd>
               </button>
-            </div>
-          )}
+            )}
+            {onOpenS3 && (
+              <button onClick={onOpenS3} className="flex items-center gap-2.5 w-full px-3.5 py-2.5 rounded-lg bg-gray-900 border border-gray-800 hover:border-blue-500/30 hover:bg-gray-800/50 transition-all group cursor-pointer">
+                <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0 group-hover:bg-blue-500/20 transition-colors">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17.5 19H9a7 7 0 1 1 6.7-9c.3-.1.5-.1.8-.1a4.5 4.5 0 1 1-3 7.9" />
+                    <path d="M12 11v4" /><path d="M14 13h-4" />
+                  </svg>
+                </div>
+                <div className="flex-1 text-left">
+                  <p className="text-[12px] font-medium text-gray-300">Conectar S3</p>
+                  <p className="text-[10px] text-gray-600">Explorá buckets y cargá archivos remotos</p>
+                </div>
+                <kbd className="text-[10px] font-mono text-gray-600 bg-gray-800 rounded px-1.5 py-0.5 shrink-0">Ctrl+Shift+S</kbd>
+              </button>
+            )}
+          </div>
         </div>
       </main>
     );

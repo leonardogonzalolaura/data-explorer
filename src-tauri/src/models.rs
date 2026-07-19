@@ -15,7 +15,7 @@ pub struct Dataset {
     pub total_rows: usize,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct S3Credentials {
     pub access_key_id: String,
     pub secret_access_key: String,
