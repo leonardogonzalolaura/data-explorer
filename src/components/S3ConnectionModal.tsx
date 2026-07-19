@@ -17,16 +17,37 @@ function formatSize(bytes: number): string {
   return `${size.toFixed(1)} ${units[i]}`;
 }
 
+function bucketNodeId(bucket: string): string {
+  return `bucket:${bucket}`;
+}
+function folderNodeId(bucket: string, prefix: string): string {
+  return `folder:${bucket}:${prefix}`;
+}
+function cacheKey(bucket: string, prefix: string): string {
+  return `${bucket}::${prefix}`;
+}
+
 export default function S3ConnectionModal({ repository, onLoadS3, onClose }: S3ConnectionModalProps) {
   const [profiles, setProfiles] = useState<S3Profile[]>([]);
   const [bucketsByProfile, setBucketsByProfile] = useState<Record<string, string[]>>({});
-  const [expandedProfile, setExpandedProfile] = useState<string | null>(null);
-  const [selectedBucket, setSelectedBucket] = useState<string | null>(null);
-  const [prefix, setPrefix] = useState("");
-  const [objects, setObjects] = useState<S3Object[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [expandedProfiles, setExpandedProfiles] = useState<Set<string>>(new Set());
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
+  const [treeCache, setTreeCache] = useState<Record<string, S3Object[]>>({});
+  const [loadingNodes, setLoadingNodes] = useState<Set<string>>(new Set());
+
+  const [activeProfileName, setActiveProfileName] = useState<string>("");
+  const [activeBucket, setActiveBucket] = useState<string>("");
+  const [activePrefix, setActivePrefix] = useState<string>("");
+  const [rightObjects, setRightObjects] = useState<S3Object[]>([]);
+  const [rightLoading, setRightLoading] = useState(false);
+
   const [error, setError] = useState<string | null>(null);
   const [showNewProfile, setShowNewProfile] = useState(false);
+
+  // Path editing
+  const [pathEditing, setPathEditing] = useState(false);
+  const [pathInput, setPathInput] = useState("");
+  const [copied, setCopied] = useState(false);
 
   // New profile form
   const [newName, setNewName] = useState("");
@@ -53,61 +74,130 @@ export default function S3ConnectionModal({ repository, onLoadS3, onClose }: S3C
 
   useEffect(() => { loadAllData(); }, [loadAllData]);
 
-  const browseBucket = useCallback(async (bucket: string, profile: S3Profile, pfx: string) => {
-    setSelectedBucket(bucket);
-    setPrefix(pfx);
-    setLoading(true);
+  const getProfile = useCallback((name: string) => profiles.find((p) => p.name === name) ?? null, [profiles]);
+
+  const fetchChildren = useCallback(async (bucket: string, prefix: string, profile: S3Profile) => {
+    const ck = cacheKey(bucket, prefix);
+    setLoadingNodes((prev) => new Set(prev).add(ck));
     setError(null);
     try {
-      const objs = await repository.listS3Objects(bucket, pfx, profile.credentials);
-      setObjects(objs);
+      const objs = await repository.listS3Objects(bucket, prefix, profile.credentials);
+      setTreeCache((prev) => ({ ...prev, [ck]: objs }));
+      return objs;
     } catch (err) {
       setError(String(err));
-      setObjects([]);
+      setTreeCache((prev) => ({ ...prev, [ck]: [] }));
+      return [];
     } finally {
-      setLoading(false);
+      setLoadingNodes((prev) => { const copy = new Set(prev); copy.delete(ck); return copy; });
     }
   }, [repository]);
 
-  const navigateFolder = useCallback(async (folderKey: string) => {
-    if (!selectedBucket) return;
-    const profile = profiles.find((p) =>
-      bucketsByProfile[p.name]?.includes(selectedBucket)
-    );
-    if (!profile) return;
-    await browseBucket(selectedBucket, profile, folderKey);
-  }, [selectedBucket, profiles, bucketsByProfile, browseBucket]);
+  const toggleProfile = useCallback((name: string) => {
+    setExpandedProfiles((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
+  }, []);
 
-  const navigateUp = useCallback(async () => {
-    if (!prefix || !selectedBucket) return;
-    const profile = profiles.find((p) =>
-      bucketsByProfile[p.name]?.includes(selectedBucket)
-    );
-    if (!profile) return;
-    const parts = prefix.replace(/\/$/, "").split("/");
-    parts.pop();
-    const parent = parts.length > 0 ? parts.join("/") + "/" : "";
-    await browseBucket(selectedBucket, profile, parent);
-  }, [prefix, selectedBucket, profiles, bucketsByProfile, browseBucket]);
+  const toggleTreeNode = useCallback(async (bucket: string, prefix: string, profile: S3Profile) => {
+    const nodeId = prefix ? folderNodeId(bucket, prefix) : bucketNodeId(bucket);
+    const isExpanded = expandedNodes.has(nodeId);
+    if (isExpanded) {
+      setExpandedNodes((prev) => { const next = new Set(prev); next.delete(nodeId); return next; });
+      return;
+    }
+    setExpandedNodes((prev) => new Set(prev).add(nodeId));
+    const ck = cacheKey(bucket, prefix);
+    if (!treeCache[ck]) {
+      await fetchChildren(bucket, prefix, profile);
+    }
+  }, [expandedNodes, treeCache, fetchChildren]);
+
+  const navigateTo = useCallback((bucket: string, prefix: string, profileName: string) => {
+    setActiveBucket(bucket);
+    setActivePrefix(prefix);
+    setActiveProfileName(profileName);
+    setPathInput(prefix);
+    setPathEditing(false);
+  }, []);
+
+  const navigateToSilent = useCallback((bucket: string, prefix: string, profileName: string) => {
+    setActiveBucket(bucket);
+    setActivePrefix(prefix);
+    setActiveProfileName(profileName);
+  }, []);
+
+  const loadRightPanel = useCallback(async (bucket: string, prefix: string, profile: S3Profile) => {
+    setRightLoading(true);
+    setError(null);
+    try {
+      const objs = await repository.listS3Objects(bucket, prefix, profile.credentials);
+      setRightObjects(objs);
+      return objs;
+    } catch (err) {
+      setError(String(err));
+      setRightObjects([]);
+      return [];
+    } finally {
+      setRightLoading(false);
+    }
+  }, [repository]);
+
+  const selectTreeNode = useCallback(async (bucket: string, prefix: string, profileName: string) => {
+    navigateTo(bucket, prefix, profileName);
+    const profile = getProfile(profileName);
+    if (profile) {
+      await loadRightPanel(bucket, prefix, profile);
+    }
+  }, [navigateTo, getProfile, loadRightPanel]);
+
+  const handlePathSubmit = useCallback(async () => {
+    if (!activeBucket) {
+      // parse bucket from path input
+      const parts = pathInput.split("/");
+      const b = parts[0];
+      const rest = parts.slice(1).join("/");
+      if (b) {
+        setActiveBucket(b);
+        setActivePrefix(rest ? rest + (rest.endsWith("/") ? "" : "/") : "");
+      }
+    }
+    if (activeBucket) {
+      const prefix = pathInput.startsWith(activeBucket + "/")
+        ? pathInput.slice(activeBucket.length + 1)
+        : pathInput;
+      const cleanPrefix = prefix && !prefix.endsWith("/") ? prefix + "/" : prefix;
+      setActivePrefix(cleanPrefix);
+      const profile = getProfile(activeProfileName);
+      if (profile) {
+        await loadRightPanel(activeBucket, cleanPrefix, profile);
+        // Sync tree: ensure the node is expanded and cached
+        const nodeId = cleanPrefix ? folderNodeId(activeBucket, cleanPrefix) : bucketNodeId(activeBucket);
+        setExpandedNodes((prev) => new Set(prev).add(nodeId));
+        const ck = cacheKey(activeBucket, cleanPrefix);
+        if (!treeCache[ck]) {
+          await fetchChildren(activeBucket, cleanPrefix, profile);
+        }
+      }
+    }
+    setPathEditing(false);
+  }, [pathInput, activeBucket, activePrefix, activeProfileName, getProfile, loadRightPanel, treeCache, fetchChildren]);
 
   const handleLoadFile = useCallback(async (obj: S3Object) => {
-    if (!selectedBucket || obj.is_dir) return;
-    const profile = profiles.find((p) =>
-      bucketsByProfile[p.name]?.includes(selectedBucket)
-    );
+    if (obj.is_dir) return;
+    if (!activeBucket) return;
+    const profile = getProfile(activeProfileName);
     if (!profile) return;
-    const uri = `s3://${selectedBucket}/${obj.key}`;
-    setLoading(true);
-    setError(null);
+    const uri = `s3://${activeBucket}/${obj.key}`;
     try {
       await onLoadS3(uri, profile.credentials);
       onClose();
     } catch (err) {
       setError(String(err));
-    } finally {
-      setLoading(false);
     }
-  }, [selectedBucket, profiles, bucketsByProfile, onLoadS3, onClose]);
+  }, [activeBucket, activeProfileName, getProfile, onLoadS3, onClose]);
 
   const addBucket = useCallback(async (profileName: string) => {
     if (!newBucketInput.trim()) return;
@@ -124,42 +214,35 @@ export default function S3ConnectionModal({ repository, onLoadS3, onClose }: S3C
     }
   }, [newBucketInput, repository]);
 
-  const deleteBucket = useCallback(async (profileName: string, bucket: string) => {
-    try {
-      await repository.deleteS3Bucket(profileName, bucket);
-      setBucketsByProfile((prev) => ({
-        ...prev,
-        [profileName]: (prev[profileName] || []).filter((b) => b !== bucket),
-      }));
-      if (selectedBucket === bucket) {
-        setSelectedBucket(null);
-        setObjects([]);
-        setPrefix("");
-      }
-    } catch (err) {
-      setError(String(err));
-    }
-  }, [repository, selectedBucket]);
-
   const deleteProfile = useCallback(async (name: string) => {
     try {
       await repository.deleteS3Profile(name);
       setProfiles((prev) => prev.filter((p) => p.name !== name));
-      if (expandedProfile === name) setExpandedProfile(null);
-      if (bucketsByProfile[name]?.includes(selectedBucket ?? "")) {
-        setSelectedBucket(null);
-        setObjects([]);
-        setPrefix("");
+      setExpandedProfiles((prev) => { const next = new Set(prev); next.delete(name); return next; });
+      if (activeProfileName === name) {
+        setActiveBucket("");
+        setActivePrefix("");
+        setRightObjects([]);
       }
     } catch (err) {
       setError(String(err));
     }
-  }, [repository, expandedProfile, bucketsByProfile, selectedBucket]);
+  }, [repository, activeProfileName]);
+
+  const copyPath = useCallback(async () => {
+    if (!activeBucket) return;
+    const path = `s3://${activeBucket}/${activePrefix}`;
+    try {
+      await navigator.clipboard.writeText(path);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch { /* ignore */ }
+  }, [activeBucket, activePrefix]);
 
   return (
     <div
       className="fixed inset-0 z-50 flex flex-col bg-gray-950/95 backdrop-blur-sm"
-      onKeyDown={(e) => { if (e.key === "Escape" && !loading) onClose(); }}
+      onKeyDown={(e) => { if (e.key === "Escape" && !loadingNodes.size) onClose(); }}
     >
       {/* Header */}
       <div className="flex items-center gap-3 px-6 py-3 border-b border-gray-800 shrink-0">
@@ -169,10 +252,11 @@ export default function S3ConnectionModal({ repository, onLoadS3, onClose }: S3C
         </svg>
         <span className="text-sm font-medium text-gray-200">S3</span>
         <span className="text-[11px] text-gray-600">
-          {selectedBucket ? `${selectedBucket}/${prefix}` : "seleccioná un bucket"}
+          {activeBucket ? `s3://${activeBucket}/${activePrefix || ""}` : ""}
         </span>
         <div className="flex-1" />
-        <button onClick={onClose} disabled={loading} className="p-1.5 text-gray-500 hover:text-gray-300 hover:bg-gray-800 rounded transition-colors">
+        {activeProfileName && <span className="text-[11px] text-gray-600">{activeProfileName}</span>}
+        <button onClick={onClose} className="p-1.5 text-gray-500 hover:text-gray-300 hover:bg-gray-800 rounded transition-colors">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
         </button>
       </div>
@@ -226,17 +310,14 @@ export default function S3ConnectionModal({ repository, onLoadS3, onClose }: S3C
                 <div key={p.name}>
                   {/* Profile header */}
                   <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => setExpandedProfile(expandedProfile === p.name ? null : p.name)}
-                      className="p-0.5 text-gray-600 hover:text-gray-300 transition-colors"
-                    >
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className={expandedProfile === p.name ? "" : "-rotate-90"}>
+                    <button onClick={() => toggleProfile(p.name)} className="p-0.5 text-gray-600 hover:text-gray-300 transition-colors">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className={expandedProfiles.has(p.name) ? "" : "-rotate-90"}>
                         <polyline points="6 9 12 15 18 9" />
                       </svg>
                     </button>
                     <button
-                      onClick={() => setExpandedProfile(expandedProfile === p.name ? null : p.name)}
-                      className={`flex-1 text-left text-[11px] px-1.5 py-1 rounded transition-colors ${expandedProfile === p.name ? "bg-gray-800 text-gray-200" : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/50"}`}
+                      onClick={() => toggleProfile(p.name)}
+                      className={`flex-1 text-left text-[11px] px-1.5 py-1 rounded transition-colors ${expandedProfiles.has(p.name) ? "bg-gray-800 text-gray-200" : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/50"}`}
                     >
                       <span className="font-medium">{p.name}</span>
                       <span className="ml-1.5 text-gray-600">{p.credentials.region}</span>
@@ -246,37 +327,52 @@ export default function S3ConnectionModal({ repository, onLoadS3, onClose }: S3C
                       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
                     </button>
                   </div>
-                  {/* Buckets under profile */}
-                  {expandedProfile === p.name && (
+
+                  {/* Profile children: buckets + their tree */}
+                  {expandedProfiles.has(p.name) && (
                     <div className="ml-3 pl-2 border-l border-gray-800 space-y-0.5 mt-0.5">
                       {bucketsByProfile[p.name]?.length === 0 && (
                         <p className="text-[11px] text-gray-600 italic px-1.5 py-1">Sin buckets</p>
                       )}
                       {bucketsByProfile[p.name]?.map((b) => (
-                        <div key={b} className="flex items-center gap-1">
-                          <button
-                            onClick={() => browseBucket(b, p, "")}
-                            className={`flex-1 text-left text-[11px] px-1.5 py-1 rounded transition-colors flex items-center gap-1.5 ${selectedBucket === b ? "bg-blue-900/40 text-blue-300" : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/50"}`}
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={selectedBucket === b ? "#60a5fa" : "#6b7280"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                            </svg>
-                            {b}
-                          </button>
-                          <button onClick={() => deleteBucket(p.name, b)} className="p-0.5 text-gray-600 hover:text-red-400 transition-colors" title="Eliminar bucket">
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-                          </button>
-                        </div>
+                        <TreeNode
+                          key={b}
+                          bucket={b}
+                          prefix=""
+                          profileName={p.name}
+                          profile={p}
+                          activeBucket={activeBucket}
+                          activePrefix={activePrefix}
+                          activeProfileName={activeProfileName}
+                          treeCache={treeCache}
+                          expandedNodes={expandedNodes}
+                          loadingNodes={loadingNodes}
+                          onSelect={selectTreeNode}
+                          onToggle={toggleTreeNode}
+                          onLoadFile={handleLoadFile}
+                          renderActions={() => (
+                            <button onClick={async () => {
+                              try {
+                                await repository.deleteS3Bucket(p.name, b);
+                                setBucketsByProfile((prev) => ({
+                                  ...prev,
+                                  [p.name]: (prev[p.name] || []).filter((x) => x !== b),
+                                }));
+                                if (activeBucket === b && activeProfileName === p.name) {
+                                  setActiveBucket(""); setActivePrefix(""); setRightObjects([]);
+                                }
+                              } catch (err) { setError(String(err)); }
+                            }} className="p-0.5 text-gray-600 hover:text-red-400 transition-colors" title="Eliminar bucket">
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                            </button>
+                          )}
+                        />
                       ))}
-                      {/* Add bucket button / input */}
+
+                      {/* Add bucket */}
                       {addingBucketFor === p.name ? (
                         <div className="flex items-center gap-1 pl-1.5">
-                          <input
-                            value={newBucketInput}
-                            onChange={(e) => setNewBucketInput(e.target.value)}
-                            placeholder="nombre del bucket"
-                            autoFocus
-                            className="flex-1 bg-gray-800 border border-gray-700 rounded px-1.5 py-0.5 text-[11px] text-gray-300 placeholder-gray-600 focus:outline-none focus:border-blue-500"
+                          <input value={newBucketInput} onChange={(e) => setNewBucketInput(e.target.value)} placeholder="nombre del bucket" autoFocus className="flex-1 bg-gray-800 border border-gray-700 rounded px-1.5 py-0.5 text-[11px] text-gray-300 placeholder-gray-600 focus:outline-none focus:border-blue-500"
                             onKeyDown={(e) => { if (e.key === "Enter") addBucket(p.name); if (e.key === "Escape") { setAddingBucketFor(null); setNewBucketInput(""); } }}
                           />
                           <button onClick={() => addBucket(p.name)} disabled={!newBucketInput.trim()} className="p-1 text-gray-500 hover:text-green-400 disabled:opacity-30 transition-colors" title="Guardar">
@@ -301,60 +397,86 @@ export default function S3ConnectionModal({ repository, onLoadS3, onClose }: S3C
         </div>
 
         {/* Right panel: file browser */}
-        <div className="flex-1 overflow-auto bg-gray-950/50 p-3">
-          {!selectedBucket ? (
-            <div className="flex items-center justify-center h-full text-gray-600 text-xs">
+        <div className="flex-1 flex flex-col overflow-hidden bg-gray-950/50">
+          {!activeBucket ? (
+            <div className="flex items-center justify-center flex-1 text-gray-600 text-xs">
               Seleccioná un bucket del panel izquierdo
             </div>
           ) : (
-            <div className="space-y-0.5">
-              {/* Breadcrumb bar */}
-              <div className="flex items-center gap-2 mb-2 pb-2 border-b border-gray-800">
-                <button
-                  onClick={() => { setObjects([]); setPrefix(""); }}
-                  className="text-[11px] text-gray-500 hover:text-gray-300 transition-colors"
-                >
-                  {selectedBucket}
-                </button>
-                {prefix && (
-                  <>
-                    <span className="text-gray-700 text-[11px]">/</span>
-                    <button onClick={navigateUp} className="text-[11px] text-gray-500 hover:text-gray-300 transition-colors">..</button>
-                    {prefix.replace(/\/$/, "").split("/").map((part, i) => (
-                      <span key={i} className="flex items-center gap-1">
-                        <span className="text-gray-700 text-[11px]">/</span>
-                        <span className="text-[11px] text-gray-400">{part}</span>
-                      </span>
-                    ))}
-                  </>
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {/* Path bar with edit/copy */}
+              <div className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-800 shrink-0">
+                {pathEditing ? (
+                  <input
+                    value={pathInput}
+                    onChange={(e) => setPathInput(e.target.value)}
+                    autoFocus
+                    placeholder={`${activeBucket}/`}
+                    className="flex-1 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[12px] text-gray-300 font-mono placeholder-gray-600 focus:outline-none focus:border-blue-500"
+                    onKeyDown={(e) => { if (e.key === "Enter") handlePathSubmit(); if (e.key === "Escape") { setPathEditing(false); setPathInput(activePrefix); } }}
+                  />
+                ) : (
+                  <span className="flex-1 text-[12px] text-gray-400 font-mono truncate">
+                    {activePrefix || <span className="text-gray-600">/</span>}
+                  </span>
                 )}
-                <div className="flex-1" />
-                {loading && <span className="text-[11px] text-gray-600 animate-pulse">cargando...</span>}
+                <button onClick={() => { if (pathEditing) { handlePathSubmit(); } else { setPathInput(activePrefix); setPathEditing(true); } }} className="p-1 text-gray-500 hover:text-gray-300 transition-colors" title={pathEditing ? "Confirmar" : "Editar ruta"}>
+                  {pathEditing ? (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+                  ) : (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /></svg>
+                  )}
+                </button>
+                <button onClick={copyPath} className="relative p-1 text-gray-500 hover:text-gray-300 transition-colors" title="Copiar ruta">
+                  {copied ? (
+                    <span className="text-[10px] text-green-400 font-medium px-1">Copiado</span>
+                  ) : (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+                  )}
+                </button>
+                {rightLoading && <span className="text-[11px] text-gray-600 animate-pulse">cargando...</span>}
               </div>
 
-              {objects.length === 0 && !loading && (
-                <div className="flex items-center justify-center h-32 text-gray-600 text-xs">
-                  Bucket vacío
-                </div>
-              )}
-              {!loading && objects.map((obj) => (
-                obj.is_dir ? (
-                  <button key={obj.key} onClick={() => navigateFolder(obj.key)} className="flex items-center gap-2 w-full text-left text-[11px] px-2 py-1.5 rounded text-gray-400 hover:text-gray-200 hover:bg-gray-800/50 transition-colors">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                    </svg>
-                    {obj.key.replace(prefix, "")}
-                  </button>
-                ) : (
-                  <button key={obj.key} onClick={() => handleLoadFile(obj)} className="flex items-center gap-2 w-full text-left text-[11px] px-2 py-1.5 rounded text-gray-400 hover:text-blue-400 hover:bg-blue-950/30 transition-colors">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
-                    </svg>
-                    <span className="flex-1 truncate">{obj.key.replace(prefix, "")}</span>
-                    <span className="text-gray-600 shrink-0">{formatSize(obj.size)}</span>
-                  </button>
-                )
-              ))}
+              {/* Content */}
+              <div className="flex-1 overflow-auto p-3 space-y-0.5">
+                {rightObjects.length === 0 && !rightLoading && (
+                  <div className="flex items-center justify-center h-32 text-gray-600 text-xs">
+                    Bucket vacío
+                  </div>
+                )}
+                {!rightLoading && rightObjects.map((obj) => (
+                  obj.is_dir ? (
+                    <button key={obj.key} onClick={async () => {
+                      navigateToSilent(activeBucket, obj.key, activeProfileName);
+                      setRightLoading(true);
+                      const profile = getProfile(activeProfileName);
+                      if (profile) {
+                        const objs = await repository.listS3Objects(activeBucket, obj.key, profile.credentials);
+                        setRightObjects(objs);
+                        setRightLoading(false);
+                        // Also cache in tree
+                        const ck = cacheKey(activeBucket, obj.key);
+                        setTreeCache((prev) => ({ ...prev, [ck]: objs }));
+                        const nodeId = folderNodeId(activeBucket, obj.key);
+                        setExpandedNodes((prev) => new Set(prev).add(nodeId));
+                      }
+                    }} className="flex items-center gap-2 w-full text-left text-[11px] px-2 py-1.5 rounded text-gray-400 hover:text-gray-200 hover:bg-gray-800/50 transition-colors">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                      </svg>
+                      {obj.key.replace(activePrefix, "")}
+                    </button>
+                  ) : (
+                    <button key={obj.key} onClick={() => handleLoadFile(obj)} className="flex items-center gap-2 w-full text-left text-[11px] px-2 py-1.5 rounded text-gray-400 hover:text-blue-400 hover:bg-blue-950/30 transition-colors">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
+                      </svg>
+                      <span className="flex-1 truncate">{obj.key.replace(activePrefix, "")}</span>
+                      <span className="text-gray-600 shrink-0">{formatSize(obj.size)}</span>
+                    </button>
+                  )
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -363,6 +485,101 @@ export default function S3ConnectionModal({ repository, onLoadS3, onClose }: S3C
       {error && (
         <div className="px-6 py-2 border-t border-gray-800 shrink-0">
           <p className="text-[11px] text-red-400">{error}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Tree node component for nested folders/files ──
+
+interface TreeNodeProps {
+  bucket: string;
+  prefix: string;
+  profileName: string;
+  profile: S3Profile;
+  activeBucket: string;
+  activePrefix: string;
+  activeProfileName: string;
+  treeCache: Record<string, S3Object[]>;
+  expandedNodes: Set<string>;
+  loadingNodes: Set<string>;
+  onSelect: (bucket: string, prefix: string, profileName: string) => Promise<void>;
+  onToggle: (bucket: string, prefix: string, profile: S3Profile) => Promise<void>;
+  onLoadFile: (obj: S3Object) => void;
+  renderActions?: () => React.ReactNode;
+}
+
+function TreeNode({
+  bucket, prefix, profileName, profile, activeBucket, activePrefix, activeProfileName,
+  treeCache, expandedNodes, loadingNodes, onSelect, onToggle, onLoadFile, renderActions,
+}: TreeNodeProps) {
+  const nodeId = prefix ? folderNodeId(bucket, prefix) : bucketNodeId(bucket);
+  const ck = cacheKey(bucket, prefix);
+  const children = treeCache[ck];
+  const isLoading = loadingNodes.has(ck);
+  const isExpanded = expandedNodes.has(nodeId);
+  const isActive = activeBucket === bucket && activePrefix === prefix && activeProfileName === profileName;
+
+  return (
+    <div>
+      <div className="flex items-center gap-1">
+        <button onClick={() => onToggle(bucket, prefix, profile)} className="p-0.5 text-gray-600 hover:text-gray-300 transition-colors">
+          {isLoading ? (
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin"><path d="M21 12a9 9 0 1 1-6.22-8.41" /></svg>
+          ) : (
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className={isExpanded ? "" : "-rotate-90"}>
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          )}
+        </button>
+        <button
+          onClick={() => onSelect(bucket, prefix, profileName)}
+          className={`flex-1 text-left text-[11px] px-1.5 py-1 rounded transition-colors flex items-center gap-1.5 ${isActive ? "bg-blue-900/40 text-blue-300" : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/50"}`}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={isActive ? "#60a5fa" : "#6b7280"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+          </svg>
+          {prefix ? prefix.replace(/\/$/, "").split("/").pop() : bucket}
+        </button>
+        {renderActions?.()}
+      </div>
+      {isExpanded && children && (
+        <div className="ml-3 pl-2 border-l border-gray-800 space-y-0.5">
+          {children.filter((o) => o.is_dir).map((child) => (
+            <TreeNode
+              key={child.key}
+              bucket={bucket}
+              prefix={child.key}
+              profileName={profileName}
+              profile={profile}
+              activeBucket={activeBucket}
+              activePrefix={activePrefix}
+              activeProfileName={activeProfileName}
+              treeCache={treeCache}
+              expandedNodes={expandedNodes}
+              loadingNodes={loadingNodes}
+              onSelect={onSelect}
+              onToggle={onToggle}
+              onLoadFile={onLoadFile}
+            />
+          ))}
+          {children.filter((o) => !o.is_dir).map((child) => (
+            <div key={child.key} className="flex items-center gap-1 pl-[18px]">
+              <button
+                onClick={() => onLoadFile(child)}
+                className="flex-1 text-left text-[11px] px-1.5 py-1 rounded transition-colors flex items-center gap-1.5 text-gray-500 hover:text-blue-400 hover:bg-blue-950/30"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
+                </svg>
+                {child.key.replace(prefix, "")}
+              </button>
+            </div>
+          ))}
+          {children.length === 0 && (
+            <p className="text-[11px] text-gray-600 italic px-1.5 py-1">Vacío</p>
+          )}
         </div>
       )}
     </div>
