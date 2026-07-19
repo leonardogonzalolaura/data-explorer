@@ -2,9 +2,10 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import Titlebar from "./components/Titlebar";
 import Footer from "./components/Footer";
 import ShortcutLegend from "./components/ShortcutLegend";
-import TabBar from "./components/TabBar";
+import DataSidebar from "./components/DataSidebar";
 import MainContent from "./components/MainContent";
 import SqlEditor from "./components/SqlEditor";
+import type { SqlEditorHandle } from "./components/SqlEditor";
 import PasteJsonModal from "./components/PasteJsonModal";
 import S3ConnectionModal from "./components/S3ConnectionModal";
 import AboutModal from "./components/AboutModal";
@@ -26,7 +27,13 @@ export default function App() {
   const [showAbout, setShowAbout] = useState(false);
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("table");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("sidebar_collapsed") === "true");
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const stored = localStorage.getItem("sidebar_width");
+    return stored ? Math.max(160, Math.min(400, Number(stored))) : 220;
+  });
   const tablesRef = useRef<TableInfo[]>([]);
+  const sqlEditorRef = useRef<SqlEditorHandle>(null);
 
   const activeDataset = tabs.find((t) => t.id === activeTabId)?.dataset ?? null;
 
@@ -95,6 +102,19 @@ export default function App() {
     invoke<TableInfo[]>("list_tables").then((t) => { tablesRef.current = t; });
   }, []);
 
+  const toggleSidebar = useCallback(() => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem("sidebar_collapsed", String(next));
+      return next;
+    });
+  }, []);
+
+  const handleSidebarWidth = useCallback((w: number) => {
+    setSidebarWidth(w);
+    localStorage.setItem("sidebar_width", String(w));
+  }, []);
+
   const handleToggleTheme = useCallback(() => {
     const isDark = document.documentElement.classList.toggle("dark");
     localStorage.setItem("theme", isDark ? "dark" : "light");
@@ -115,6 +135,7 @@ export default function App() {
   useHotkeys("Ctrl+Shift+L", () => setShowShortcuts((v) => !v));
   useHotkeys("Ctrl+Shift+S", () => setShowS3Modal((v) => !v));
   useHotkeys("Ctrl+Shift+D", handleToggleTheme);
+  useHotkeys("Ctrl+Shift+B", toggleSidebar);
   useHotkeys("Ctrl+Shift+W", () => {
     if (viewMode === "sql") {
       setViewMode("table");
@@ -136,20 +157,44 @@ export default function App() {
         onToggleShortcutLegend={() => setShowShortcuts((v) => !v)}
         onToggleTheme={handleToggleTheme}
         onOpenAbout={() => setShowAbout(true)}
+        onToggleSidebar={toggleSidebar}
+        sidebarCollapsed={sidebarCollapsed}
       />
 
-      {viewMode === "table" && tabs.length > 0 && (
-        <TabBar
-          tabs={tabs}
-          activeTabId={activeTabId}
-          onSelectTab={(id) => { setActiveTabId(id); setViewMode("table"); }}
-          onCloseTab={closeTab}
-        />
-      )}
-
       <div className="flex-1 flex overflow-hidden">
+        {(tabs.length > 0 || viewMode === "sql") && (
+          <DataSidebar
+            tabs={tabs}
+            activeTabId={activeTabId}
+            onSelectTab={(id) => { setActiveTabId(id); setViewMode("table"); }}
+            onCloseTab={closeTab}
+            collapsed={sidebarCollapsed}
+            onToggleCollapse={toggleSidebar}
+            width={sidebarWidth}
+            onWidthChange={handleSidebarWidth}
+            viewMode={viewMode}
+            tables={tablesRef.current}
+            onInsertTable={(name) => sqlEditorRef.current?.insertTableName(name)}
+            onLoadFile={openFile}
+            onPasteJson={() => setShowPasteModal(true)}
+            onConnectS3={() => setShowS3Modal(true)}
+            onBackToTable={() => setViewMode("table")}
+          />
+        )}
+        {sidebarCollapsed && (tabs.length > 0 || viewMode === "sql") && (
+          <button
+            onClick={toggleSidebar}
+            className="flex items-center justify-center w-5 shrink-0 bg-gray-900 border-r border-gray-800 text-gray-600 hover:text-gray-300 hover:bg-gray-800 transition-colors cursor-pointer"
+            title="Mostrar sidebar"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </button>
+        )}
         {viewMode === "sql" ? (
           <SqlEditor
+            ref={sqlEditorRef}
             tables={tablesRef.current}
             onResult={handleSqlResult}
             onClose={() => setViewMode("table")}

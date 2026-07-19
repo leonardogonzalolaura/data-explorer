@@ -1,4 +1,4 @@
-import { useRef, useMemo, useEffect, useState, useCallback } from "react";
+import { useRef, useMemo, useEffect, useState, useCallback, forwardRef, useImperativeHandle } from "react";
 import { EditorView, keymap, placeholder } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { sql, SQLite } from "@codemirror/lang-sql";
@@ -7,6 +7,10 @@ import { syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language"
 import { invoke } from "@tauri-apps/api/core";
 import type { Dataset, TableInfo } from "../types";
 import SqlResults from "./SqlResults";
+
+export interface SqlEditorHandle {
+  insertTableName: (name: string) => void;
+}
 
 interface SqlEditorProps {
   tables: TableInfo[];
@@ -79,7 +83,7 @@ const darkTheme = EditorView.theme(
   { dark: true }
 );
 
-export default function SqlEditor({ tables, onResult, onClose }: SqlEditorProps) {
+const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function SqlEditor({ tables, onResult, onClose }, ref) {
   const editorRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -111,6 +115,18 @@ export default function SqlEditor({ tables, onResult, onClose }: SqlEditorProps)
   }, [onResult]);
 
   runQueryRef.current = runQuery;
+
+  useImperativeHandle(ref, () => ({
+    insertTableName(name: string) {
+      const view = viewRef.current;
+      if (!view) return;
+      view.dispatch({
+        changes: { from: view.state.selection.main.from, insert: name },
+        selection: { anchor: view.state.selection.main.from + name.length },
+      });
+      view.focus();
+    },
+  }), []);
 
   const extensions = useMemo(
     () => [
@@ -327,4 +343,6 @@ export default function SqlEditor({ tables, onResult, onClose }: SqlEditorProps)
       )}
     </div>
   );
-}
+});
+
+export default SqlEditor;

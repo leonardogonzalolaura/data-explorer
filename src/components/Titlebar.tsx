@@ -11,6 +11,8 @@ interface TitlebarProps {
   onToggleShortcutLegend?: () => void;
   onToggleTheme?: () => void;
   onOpenAbout?: () => void;
+  onToggleSidebar?: () => void;
+  sidebarCollapsed?: boolean;
 }
 
 function MenuDropdown({ items, onClose }: { items: MenuItem[]; onClose: () => void }) {
@@ -61,6 +63,8 @@ export default function Titlebar({
   onToggleShortcutLegend,
   onToggleTheme,
   onOpenAbout,
+  onToggleSidebar,
+  sidebarCollapsed,
 }: TitlebarProps) {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
 
@@ -81,6 +85,7 @@ export default function Titlebar({
       { label: "Seleccionar todo", shortcut: "Ctrl+A", disabled: true },
     ],
     Ver: [
+      { label: sidebarCollapsed ? "Mostrar sidebar" : "Ocultar sidebar", action: onToggleSidebar, shortcut: "Ctrl+Shift+B" },
       { label: "Modo oscuro/claro", action: onToggleTheme, shortcut: "Ctrl+Shift+D" },
       { label: "Atajos de teclado", action: onToggleShortcutLegend, shortcut: "Ctrl+Shift+L" },
     ],
