@@ -46,6 +46,7 @@ pub fn run() {
             commands::sql_commands::execute_sql,
             commands::sql_commands::list_tables,
             commands::sql_commands::drop_table,
+            commands::export_commands::export_dataset,
             commands::s3_commands::load_s3_file,
             commands::s3_commands::list_s3_objects,
             commands::s3_commands::list_s3_profiles,
