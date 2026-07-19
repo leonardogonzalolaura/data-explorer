@@ -188,6 +188,7 @@ export default function App() {
             onPasteJson={() => setShowPasteModal(true)}
             onConnectS3={() => setShowS3Modal(true)}
             onBackToTable={() => setViewMode("table")}
+            onOpenSql={openSqlEditor}
           />
         )}
         {sidebarCollapsed && (tabs.length > 0 || viewMode === "sql") && (

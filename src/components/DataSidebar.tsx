@@ -20,11 +20,12 @@ interface DataSidebarProps {
   onPasteJson?: () => void;
   onConnectS3?: () => void;
   onBackToTable?: () => void;
+  onOpenSql?: () => void;
 }
 
 export default function DataSidebar({
   tabs, activeTabId, onSelectTab, onCloseTab, collapsed, onToggleCollapse, width, onWidthChange,
-  viewMode, tables, onInsertTable, onDropTable, onLoadFile, onPasteJson, onConnectS3, onBackToTable,
+  viewMode, tables, onInsertTable, onDropTable, onLoadFile, onPasteJson, onConnectS3, onBackToTable, onOpenSql,
 }: DataSidebarProps) {
   const resizing = useRef(false);
   const startX = useRef(0);
@@ -91,12 +92,28 @@ export default function DataSidebar({
           onBackToTable={onBackToTable}
         />
       ) : (
-        <DatasetList
-          tabs={tabs}
-          activeTabId={activeTabId}
-          onSelectTab={onSelectTab}
-          onCloseTab={onCloseTab}
-        />
+        <div className="flex flex-col flex-1 min-h-0">
+          <DatasetList
+            tabs={tabs}
+            activeTabId={activeTabId}
+            onSelectTab={onSelectTab}
+            onCloseTab={onCloseTab}
+          />
+          {tables.length > 0 && onOpenSql && (
+            <div className="px-3 py-2 border-t border-gray-800 shrink-0">
+              <button
+                onClick={onOpenSql}
+                className="flex items-center gap-2 w-full px-2.5 py-1.5 text-[11px] text-gray-500 hover:text-gray-300 hover:bg-gray-800/60 rounded-md transition-colors text-left"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
+                Ir a SQL
+                <span className="ml-auto text-[9px] text-gray-600">Ctrl+Shift+K</span>
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Resize handle */}
