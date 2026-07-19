@@ -13,12 +13,17 @@ pub fn load_file(
     let dataset = loader_service.load(&path)?;
 
     if let Ok(mut engine) = engine.lock() {
-        if let Ok(df) = try_load_df(&path) {
-            let name = std::path::Path::new(&path)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("data");
-            engine.register(name, df);
+        match try_load_df(&path) {
+            Ok(df) => {
+                let name = std::path::Path::new(&path)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("data");
+                engine.register(name, df);
+            }
+            Err(e) => {
+                eprintln!("[SQL] No se pudo cargar DataFrame para SQL engine: {}", e);
+            }
         }
     }
 

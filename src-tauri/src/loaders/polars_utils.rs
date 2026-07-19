@@ -69,7 +69,7 @@ pub fn df_to_rows(df: &DataFrame, max_rows: usize) -> Vec<Vec<serde_json::Value>
         .collect()
 }
 
-fn format_dtype(dt: &DataType) -> String {
+pub fn format_dtype(dt: &DataType) -> String {
     match dt {
         DataType::Int8 => "i8",
         DataType::Int16 => "i16",
@@ -86,6 +86,7 @@ fn format_dtype(dt: &DataType) -> String {
         DataType::Date => "date",
         DataType::Datetime(_, _) => "datetime",
         DataType::Time => "time",
+        DataType::Decimal(_, _) => "decimal",
         _ => "other",
     }
     .to_string()
@@ -131,6 +132,16 @@ fn polars_value_to_json(value: AnyValue) -> serde_json::Value {
         AnyValue::Time(v) => {
             let ts = polars::export::arrow::temporal_conversions::time64ns_to_time(v);
             serde_json::Value::String(ts.format("%H:%M:%S").to_string())
+        }
+        AnyValue::Decimal(v, scale) => {
+            let factor = 10i128.pow(scale as u32);
+            let int_part = v / factor;
+            let frac_part = (v % factor).abs();
+            if scale == 0 {
+                serde_json::Value::String(int_part.to_string())
+            } else {
+                serde_json::Value::String(format!("{}.{:0>width$}", int_part, frac_part, width = scale as usize))
+            }
         }
         _ => serde_json::Value::String(format!("{:?}", value)),
     }

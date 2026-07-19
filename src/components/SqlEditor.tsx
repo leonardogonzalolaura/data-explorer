@@ -6,7 +6,7 @@ import { defaultKeymap } from "@codemirror/commands";
 import { syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
 import { invoke } from "@tauri-apps/api/core";
 import type { Dataset } from "../types";
-import DataTable from "./DataTable";
+import SqlResults from "./SqlResults";
 
 interface SqlEditorProps {
   tables: string[];
@@ -16,11 +16,11 @@ interface SqlEditorProps {
 
 const darkTheme = EditorView.theme(
   {
-    "&": { backgroundColor: "#0f172a", color: "#e2e8f0", fontSize: "15px" },
-    ".cm-content": { fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace", padding: "24px 28px", lineHeight: "1.8", caretColor: "#60a5fa" },
+    "&": { backgroundColor: "#0f172a", color: "#e2e8f0", fontSize: "14px" },
+    ".cm-content": { fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace", padding: "16px 20px", lineHeight: "1.7", caretColor: "#60a5fa" },
     ".cm-cursor": { borderLeftColor: "#60a5fa", borderLeftWidth: "2px" },
-    ".cm-gutters": { backgroundColor: "#0f172a", color: "#475569", border: "none", minWidth: "48px" },
-    ".cm-lineNumbers .cm-gutterElement": { padding: "0 12px 0 20px", fontSize: "13px" },
+    ".cm-gutters": { backgroundColor: "#0f172a", color: "#475569", border: "none", minWidth: "40px" },
+    ".cm-lineNumbers .cm-gutterElement": { padding: "0 8px 0 16px", fontSize: "12px" },
     ".cm-activeLineGutter": { backgroundColor: "#1e3a8a", color: "#93c5fd" },
     ".cm-activeLine": { backgroundColor: "rgba(59, 130, 246, 0.05)" },
     "&.cm-focused .cm-selectionBackground, .cm-selectionBackground": { backgroundColor: "#334155" },
@@ -36,16 +36,18 @@ export default function SqlEditor({ tables, onResult, onClose }: SqlEditorProps)
   const viewRef = useRef<EditorView | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const runQueryRef = useRef<() => Promise<void>>(undefined);
+  const runningRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<Dataset | null>(null);
-  const [editorHeight, setEditorHeight] = useState(65);
+  const [editorPct, setEditorPct] = useState(10);
   const dragging = useRef(false);
 
   const runQuery = useCallback(async () => {
-    if (!viewRef.current) return;
-    setError(null);
+    if (runningRef.current || !viewRef.current) return;
+    runningRef.current = true;
     setRunning(true);
+    setError(null);
     const sqlText = viewRef.current.state.doc.toString();
     try {
       const dataset = await invoke<Dataset>("execute_sql", { sql: sqlText });
@@ -54,6 +56,7 @@ export default function SqlEditor({ tables, onResult, onClose }: SqlEditorProps)
     } catch (err) {
       setError(String(err));
     } finally {
+      runningRef.current = false;
       setRunning(false);
     }
   }, [onResult]);
@@ -84,7 +87,19 @@ export default function SqlEditor({ tables, onResult, onClose }: SqlEditorProps)
     });
     const view = new EditorView({ state, parent: editorRef.current });
     viewRef.current = view;
+    view.focus();
     return () => { view.destroy(); viewRef.current = null; };
+  }, []);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        e.preventDefault();
+        runQueryRef.current?.();
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
   }, []);
 
   const onDividerMouseDown = useCallback(() => {
@@ -96,7 +111,7 @@ export default function SqlEditor({ tables, onResult, onClose }: SqlEditorProps)
       if (!el) return;
       const rect = el.getBoundingClientRect();
       const pct = ((e.clientY - rect.top) / rect.height) * 100;
-      setEditorHeight(Math.max(40, Math.min(90, pct)));
+      setEditorPct(Math.max(5, Math.min(50, pct)));
     };
     const onMouseUp = () => {
       dragging.current = false;
@@ -109,71 +124,46 @@ export default function SqlEditor({ tables, onResult, onClose }: SqlEditorProps)
   }, []);
 
   const hasResults = result || error;
+  const noTables = tables.length === 0;
 
   return (
-    <div ref={containerRef} className="flex-1 flex flex-col bg-gray-950 min-h-0">
-      {/* Header */}
-      <div className="flex items-center gap-3 px-6 py-3.5 border-b border-gray-800/80 bg-gray-900/90 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-blue-600/15 flex items-center justify-center">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 2L2 7l10 5 10-5-10-5z" />
-              <path d="M2 17l10 5 10-5" />
-              <path d="M2 12l10 5 10-5" />
-            </svg>
-          </div>
-          <div>
-            <h2 className="text-sm font-semibold text-gray-200">Editor SQL</h2>
-            <p className="text-[11px] text-gray-500">
-              {tables.length > 0 ? `Tablas: ${tables.join(", ")}` : "Abre un archivo primero"}
-            </p>
-          </div>
+    <div ref={containerRef} className="flex-1 flex flex-col bg-gray-950 min-h-0 min-w-0">
+      {/* Top header — light, just info + close */}
+      <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-800/60 bg-gray-900/80 shrink-0">
+        <div className="w-6 h-6 rounded bg-blue-600/20 flex items-center justify-center shrink-0">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 2L2 7l10 5 10-5-10-5z" />
+            <path d="M2 17l10 5 10-5" />
+            <path d="M2 12l10 5 10-5" />
+          </svg>
         </div>
+        {tables.length > 0 && (
+          <span className="text-[11px] text-gray-500 truncate max-w-[200px]">
+            {tables.join(", ")}
+          </span>
+        )}
         <div className="flex-1" />
-        <div className="flex items-center gap-2.5">
-          <kbd className="hidden sm:inline-flex items-center text-xs bg-gray-800 border border-gray-700/60 rounded-md px-2.5 py-1 text-gray-500 font-mono gap-1.5">
-            <span className="text-gray-600">Ctrl</span>
-            <span className="text-gray-600">+</span>
-            <span className="text-gray-600">Enter</span>
-            <span className="text-gray-500 ml-1">▶</span>
-          </kbd>
-          <button
-            onClick={runQuery}
-            disabled={running || tables.length === 0}
-            className="flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white rounded-lg transition-all active:scale-[0.97] shadow-lg bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800/60 disabled:text-blue-200 disabled:cursor-wait"
-          >
-            {running ? (
-              <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" strokeDasharray="32" strokeDashoffset="8" />
-              </svg>
-            ) : (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                <polygon points="5,3 19,12 5,21" />
-              </svg>
-            )}
-            {running ? "Ejecutando..." : "Ejecutar"}
-          </button>
-          <button
-            onClick={onClose}
-            className="p-2.5 text-gray-500 hover:text-gray-300 hover:bg-gray-800 rounded-lg transition-colors"
-            title="Cerrar (Ctrl+Shift+W)"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </div>
+        <button
+          onClick={onClose}
+          className="p-1.5 text-gray-600 hover:text-gray-300 hover:bg-gray-800 rounded transition-colors"
+          title="Cerrar (Ctrl+Shift+W)"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
       </div>
 
       {/* Editor panel */}
       <div
         className="flex flex-col overflow-hidden min-h-0"
-        style={{ flex: hasResults ? `${editorHeight} 1 0%` : "1 1 0%" }}
+        style={{ flex: hasResults ? `${editorPct} 1 0%` : "1 1 0%" }}
       >
-        <div className="flex items-center justify-between px-6 py-2 bg-gray-900/30 border-b border-gray-800/50 shrink-0">
-          <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Consulta</span>
-          <span className="text-[11px] text-gray-600 font-mono">SQL</span>
-        </div>
+        {noTables && (
+          <div className="px-4 py-2 text-[11px] text-yellow-500 bg-yellow-950/20 border-b border-yellow-900/30 shrink-0">
+            No hay tablas disponibles. Abrí un archivo primero para poder ejecutar SQL.
+          </div>
+        )}
         <div
           ref={editorRef}
           tabIndex={0}
@@ -186,34 +176,82 @@ export default function SqlEditor({ tables, onResult, onClose }: SqlEditorProps)
         <>
           <div
             onMouseDown={onDividerMouseDown}
-            className="h-2 bg-gray-800/60 hover:bg-blue-700/40 cursor-row-resize shrink-0 transition-colors relative group"
+            className="h-1.5 bg-gray-800/50 hover:bg-blue-700/40 cursor-row-resize shrink-0 transition-colors relative group"
           >
             <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-              <div className="w-8 h-1 rounded-full bg-blue-500/60" />
+              <div className="w-6 h-0.5 rounded-full bg-blue-500/60" />
             </div>
           </div>
+
           <div
-            className="flex flex-col overflow-hidden min-h-0"
-            style={{ flex: `${100 - editorHeight} 1 0%` }}
+            className="flex flex-col min-h-0 min-w-0"
+            style={{ flex: `${100 - editorPct} 1 0%` }}
           >
-            <div className="flex items-center justify-between px-6 py-2 bg-gray-900/30 border-b border-gray-800/50 shrink-0">
-              <div className="flex items-center gap-3">
-                <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Resultados</span>
-                {error && <span className="text-xs text-red-400">Error</span>}
-              </div>
+            {/* Results header — with execute button */}
+            <div className="flex items-center gap-2 px-4 py-1.5 bg-gray-900/20 border-b border-gray-800/40 shrink-0">
+              <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wider">Resultados</span>
+              {error && <span className="text-[11px] text-red-400">Error</span>}
+              <div className="flex-1" />
+              <span className="text-[10px] text-gray-600 font-mono">Ctrl+Enter</span>
+              <button
+                onClick={runQuery}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "3px 12px",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  borderRadius: "5px",
+                  border: "none",
+                  cursor: noTables ? "not-allowed" : running ? "wait" : "pointer",
+                  opacity: noTables ? 0.4 : 1,
+                  backgroundColor: running ? "#1e40af" : "#2563eb",
+                  color: "white",
+                }}
+              >
+                {running && (
+                  <svg className="animate-spin" width="12" height="12" viewBox="0 0 24 24" style={{ display: "inline-block" }}>
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" strokeDasharray="32" strokeDashoffset="8" />
+                  </svg>
+                )}
+                {!running && (
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" style={{ display: "inline-block" }}>
+                    <polygon points="5,3 19,12 5,21" />
+                  </svg>
+                )}
+                {running ? "Ejecutando..." : "Ejecutar"}
+              </button>
               {result && (
-                <span className="text-xs text-gray-500">
+                <span className="text-[11px] text-gray-600 ml-1">
                   {result.total_rows.toLocaleString()} filas · {result.columns.length} columnas
                 </span>
               )}
             </div>
-            <div className="flex-1 overflow-hidden min-h-0">
+
+            <div className="flex-1 flex flex-col min-h-0 min-w-0">
               {error && (
-                <div className="m-4 p-4 text-sm text-red-400 bg-red-950/40 border border-red-900/50 rounded-lg">
+                <div className="m-3 p-3 text-sm text-red-400 bg-red-950/30 border border-red-900/50 rounded-lg">
                   {error}
                 </div>
               )}
-              {result && <DataTable dataset={result} />}
+              {result && (
+                <div
+                  style={{
+                    margin: "8px",
+                    border: "2px solid #3b82f6",
+                    borderRadius: "6px",
+                    flex: "1 1 0%",
+                    minHeight: 0,
+                    minWidth: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    overflow: "hidden",
+                  }}
+                >
+                  <SqlResults dataset={result} />
+                </div>
+              )}
             </div>
           </div>
         </>

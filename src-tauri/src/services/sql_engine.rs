@@ -33,14 +33,20 @@ impl SqlEngine {
 
         let df = lf.collect().map_err(|e| format!("Error ejecutando SQL: {}", e))?;
 
-        let columns: Vec<crate::models::ColumnInfo> = df
-            .get_column_names()
-            .iter()
-            .map(|name| crate::models::ColumnInfo {
+    let columns: Vec<crate::models::ColumnInfo> = df
+        .get_column_names()
+        .iter()
+        .map(|name| {
+            let dtype = df
+                .column(name)
+                .map(|s| crate::loaders::polars_utils::format_dtype(s.dtype()))
+                .unwrap_or_default();
+            crate::models::ColumnInfo {
                 name: name.to_string(),
-                dtype: "other".to_string(),
-            })
-            .collect();
+                dtype,
+            }
+        })
+        .collect();
 
         let total_rows = df.height();
         let display_rows = total_rows.min(10_000);
