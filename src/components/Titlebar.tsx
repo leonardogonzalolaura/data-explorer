@@ -10,6 +10,7 @@ interface TitlebarProps {
   onExport?: () => void;
   onToggleShortcutLegend?: () => void;
   onToggleTheme?: () => void;
+  onOpenAbout?: () => void;
 }
 
 function MenuDropdown({ items, onClose }: { items: MenuItem[]; onClose: () => void }) {
@@ -24,30 +25,30 @@ function MenuDropdown({ items, onClose }: { items: MenuItem[]; onClose: () => vo
   }, [onClose]);
 
   return (
-    <div
-      ref={ref}
-      className="absolute top-full left-0 bg-gray-800 border border-gray-700 rounded-lg shadow-dropdown py-1 min-w-44 z-50 animate-fade-in"
-    >
-      {items.map((item, i) => {
-        if (item.separator) return <div key={i} className="h-px bg-gray-700 my-1" />;
-        return (
-          <button
-            key={i}
-            disabled={item.disabled}
-            onClick={() => {
-              item.action?.();
-              onClose();
-            }}
-            className={`w-full flex items-center justify-between px-3 py-1.5 text-sm ${
-              item.disabled ? "text-gray-600 cursor-not-allowed" : "text-gray-200 hover:bg-gray-700"
-            }`}
-          >
-            <span>{item.label}</span>
-            {item.shortcut && <span className="text-xs text-gray-500 ml-6">{item.shortcut}</span>}
-          </button>
-        );
-      })}
-    </div>
+      <div
+        ref={ref}
+        className="absolute top-full left-0 bg-gray-900 border-x border-b border-gray-800 shadow-2xl py-1 min-w-64 z-50"
+      >
+        {items.map((item, i) => {
+          if (item.separator) return <div key={i} className="h-px bg-gray-800 my-1 mx-3" />;
+          return (
+            <button
+              key={i}
+              disabled={item.disabled}
+              onClick={() => {
+                item.action?.();
+                onClose();
+              }}
+              className={`w-full flex items-center justify-between px-4 py-2.5 text-sm whitespace-nowrap ${
+                item.disabled ? "text-gray-600 cursor-not-allowed" : "text-gray-300 hover:bg-gray-800 hover:text-white"
+              }`}
+            >
+              <span>{item.label}</span>
+              {item.shortcut && <span className="text-xs text-gray-600 ml-10 font-mono">{item.shortcut}</span>}
+            </button>
+          );
+        })}
+      </div>
   );
 }
 
@@ -59,6 +60,7 @@ export default function Titlebar({
   onExport,
   onToggleShortcutLegend,
   onToggleTheme,
+  onOpenAbout,
 }: TitlebarProps) {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
 
@@ -83,7 +85,7 @@ export default function Titlebar({
       { label: "Atajos de teclado", action: onToggleShortcutLegend, shortcut: "Ctrl+Shift+L" },
     ],
     Ayuda: [
-      { label: "Acerca de Data Explorer", action: () => {} },
+      { label: "Acerca de Data Explorer", action: onOpenAbout },
     ],
   };
 
@@ -102,14 +104,14 @@ export default function Titlebar({
         <span data-tauri-drag-region>{title}</span>
       </div>
 
-      <nav className="flex items-stretch gap-0 ml-2" data-tauri-drag-region>
+      <nav className="flex items-stretch ml-4" data-tauri-drag-region>
         {menuLabels.map((label) => (
           <div key={label} className="relative flex items-stretch">
             <button
               onClick={() => setOpenMenu(openMenu === label ? null : label)}
               onMouseEnter={() => { if (openMenu) setOpenMenu(label); }}
-              className={`px-3 text-sm transition-colors ${
-                openMenu === label ? "bg-gray-800 text-white" : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/50"
+              className={`px-4 text-sm transition-colors ${
+                openMenu === label ? "bg-gray-800 text-gray-200" : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/50"
               }`}
             >
               {label}

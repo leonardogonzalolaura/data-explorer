@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import Titlebar from "./components/Titlebar";
 import Footer from "./components/Footer";
 import ShortcutLegend from "./components/ShortcutLegend";
@@ -7,6 +7,7 @@ import MainContent from "./components/MainContent";
 import SqlEditor from "./components/SqlEditor";
 import PasteJsonModal from "./components/PasteJsonModal";
 import S3ConnectionModal from "./components/S3ConnectionModal";
+import AboutModal from "./components/AboutModal";
 import { useHotkeys } from "./hooks/useHotkeys";
 import { TauriDataRepository } from "./services/dataRepository";
 import { invoke } from "@tauri-apps/api/core";
@@ -22,6 +23,7 @@ export default function App() {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showPasteModal, setShowPasteModal] = useState(false);
   const [showS3Modal, setShowS3Modal] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("table");
   const tablesRef = useRef<TableInfo[]>([]);
@@ -94,7 +96,17 @@ export default function App() {
   }, []);
 
   const handleToggleTheme = useCallback(() => {
-    document.documentElement.classList.toggle("dark");
+    const isDark = document.documentElement.classList.toggle("dark");
+    localStorage.setItem("theme", isDark ? "dark" : "light");
+  }, []);
+
+  useEffect(() => {
+    const stored = localStorage.getItem("theme");
+    if (stored === "light") {
+      document.documentElement.classList.remove("dark");
+    } else {
+      document.documentElement.classList.add("dark");
+    }
   }, []);
 
   useHotkeys("Ctrl+Shift+O", openFile);
@@ -123,6 +135,7 @@ export default function App() {
         onOpenS3={() => setShowS3Modal(true)}
         onToggleShortcutLegend={() => setShowShortcuts((v) => !v)}
         onToggleTheme={handleToggleTheme}
+        onOpenAbout={() => setShowAbout(true)}
       />
 
       {viewMode === "table" && tabs.length > 0 && (
@@ -165,6 +178,10 @@ export default function App() {
           onLoadS3={handleLoadS3}
           onClose={() => setShowS3Modal(false)}
         />
+      )}
+
+      {showAbout && appInfo && (
+        <AboutModal version={appInfo.version} onClose={() => setShowAbout(false)} />
       )}
     </div>
   );
