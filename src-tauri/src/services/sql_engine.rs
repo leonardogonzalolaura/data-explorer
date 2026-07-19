@@ -69,6 +69,17 @@ impl SqlEngine {
         })
     }
 
+    pub fn unregister(&mut self, name: &str) -> Result<(), String> {
+        match self.tables.remove(name) {
+            Some(_) => {
+                let drop_sql = format!("DROP TABLE IF EXISTS \"{}\"", name);
+                let _ = self.ctx.execute(&drop_sql);
+                Ok(())
+            }
+            None => Err(format!("Tabla '{}' no encontrada", name)),
+        }
+    }
+
     pub fn list_tables(&self) -> Vec<TableInfo> {
         let mut names: Vec<TableInfo> = self
             .tables

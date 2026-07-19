@@ -1,9 +1,11 @@
 import { useState, useCallback } from "react";
 import type { TableInfo } from "../types";
+import ConfirmModal from "./ConfirmModal";
 
 interface TablesListProps {
   tables: TableInfo[];
   onInsertTable?: (name: string) => void;
+  onDropTable?: (name: string) => void;
 }
 
 function TableIcon({ source }: { source: string }) {
@@ -54,14 +56,17 @@ const sourceColors: Record<string, string> = {
   xlsm: "text-emerald-400",
 };
 
-export default function TablesList({ tables, onInsertTable }: TablesListProps) {
+export default function TablesList({ tables, onInsertTable, onDropTable }: TablesListProps) {
   const [copiedTable, setCopiedTable] = useState<string | null>(null);
+  const [confirmDrop, setConfirmDrop] = useState<string | null>(null);
 
   const handleCopy = useCallback((name: string) => {
     navigator.clipboard.writeText(name);
     setCopiedTable(name);
     setTimeout(() => setCopiedTable(null), 1500);
   }, []);
+
+  const pendingTable = confirmDrop ? tables.find((t) => t.name === confirmDrop) : null;
 
   if (tables.length === 0) {
     return (
@@ -72,39 +77,69 @@ export default function TablesList({ tables, onInsertTable }: TablesListProps) {
   }
 
   return (
-    <div className="flex-1 overflow-auto py-1">
-      {tables.map((t) => {
-        const color = sourceColors[t.source.toLowerCase()] ?? "text-gray-400";
-        return (
-          <div
-            key={t.name}
-            className={`group flex items-center gap-2 px-3 py-2 mx-1 rounded-md cursor-pointer transition-colors ${color} hover:bg-gray-800/60`}
-            onClick={() => handleCopy(t.name)}
-            title="Copiar nombre de tabla"
-          >
-            <TableIcon source={t.source} />
-            <span className="flex-1 text-[11px] font-medium truncate">
-              {copiedTable === t.name ? (
-                <span className="text-blue-300">✓ Copiado</span>
-              ) : (
-                t.name
+    <>
+      <div className="flex-1 overflow-auto py-1">
+        {tables.map((t) => {
+          const color = sourceColors[t.source.toLowerCase()] ?? "text-gray-400";
+          return (
+            <div
+              key={t.name}
+              className={`group flex items-center gap-2 px-3 py-2 mx-1 rounded-md cursor-pointer transition-colors ${color} hover:bg-gray-800/60`}
+              onClick={() => handleCopy(t.name)}
+              title="Copiar nombre de tabla"
+            >
+              <TableIcon source={t.source} />
+              <span className="flex-1 text-[11px] font-medium truncate">
+                {copiedTable === t.name ? (
+                  <span className="text-blue-300">✓ Copiado</span>
+                ) : (
+                  t.name
+                )}
+              </span>
+              <span className="text-[10px] text-gray-600 font-mono shrink-0">{t.source}</span>
+              {onInsertTable && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onInsertTable(t.name); }}
+                  className="p-0.5 rounded text-gray-600 hover:text-blue-400 hover:bg-gray-700 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                  title="Insertar en el editor"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 5v14" /><path d="M5 12h14" />
+                  </svg>
+                </button>
               )}
-            </span>
-            <span className="text-[10px] text-gray-600 font-mono shrink-0">{t.source}</span>
-            {onInsertTable && (
-              <button
-                onClick={(e) => { e.stopPropagation(); onInsertTable(t.name); }}
-                className="p-0.5 rounded text-gray-600 hover:text-blue-400 hover:bg-gray-700 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                title="Insertar en el editor"
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 5v14" /><path d="M5 12h14" />
-                </svg>
-              </button>
-            )}
-          </div>
-        );
-      })}
-    </div>
+              {onDropTable && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setConfirmDrop(t.name); }}
+                  className="p-0.5 rounded text-gray-600 hover:text-red-400 hover:bg-gray-700 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                  title="Eliminar fuente"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <ConfirmModal
+        open={confirmDrop !== null}
+        title="Eliminar fuente"
+        message={
+          pendingTable
+            ? `¿Estás seguro de eliminar la tabla "${pendingTable.name}" de tipo ${pendingTable.source}? Los datos no se perderán, solo se quitará del listado de tablas SQL.`
+            : ""
+        }
+        confirmLabel="Eliminar"
+        variant="danger"
+        onConfirm={() => {
+          if (confirmDrop) onDropTable?.(confirmDrop);
+          setConfirmDrop(null);
+        }}
+        onCancel={() => setConfirmDrop(null)}
+      />
+    </>
   );
 }

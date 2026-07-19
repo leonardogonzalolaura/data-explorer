@@ -15,6 +15,7 @@ interface DataSidebarProps {
   viewMode: "table" | "sql";
   tables: TableInfo[];
   onInsertTable?: (name: string) => void;
+  onDropTable?: (name: string) => void;
   onLoadFile?: () => void;
   onPasteJson?: () => void;
   onConnectS3?: () => void;
@@ -23,7 +24,7 @@ interface DataSidebarProps {
 
 export default function DataSidebar({
   tabs, activeTabId, onSelectTab, onCloseTab, collapsed, onToggleCollapse, width, onWidthChange,
-  viewMode, tables, onInsertTable, onLoadFile, onPasteJson, onConnectS3, onBackToTable,
+  viewMode, tables, onInsertTable, onDropTable, onLoadFile, onPasteJson, onConnectS3, onBackToTable,
 }: DataSidebarProps) {
   const resizing = useRef(false);
   const startX = useRef(0);
@@ -83,6 +84,7 @@ export default function DataSidebar({
         <SqlSidebar
           tables={tables}
           onInsertTable={onInsertTable}
+          onDropTable={onDropTable}
           onLoadFile={onLoadFile}
           onPasteJson={onPasteJson}
           onConnectS3={onConnectS3}

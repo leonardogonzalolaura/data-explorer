@@ -18,54 +18,6 @@ interface SqlEditorProps {
   onClose: () => void;
 }
 
-function SourceIcon({ source }: { source: string }) {
-  const s = source.toLowerCase();
-  if (s === "csv" || s === "tsv") {
-    return (
-      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" />
-      </svg>
-    );
-  }
-  if (s === "parquet") {
-    return (
-      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" /><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
-      </svg>
-    );
-  }
-  if (s === "json" || s === "pegado") {
-    return (
-      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" />
-      </svg>
-    );
-  }
-  if (s === "xlsx" || s === "xls" || s === "xlsm") {
-    return (
-      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="8" y1="16" x2="16" y2="16" /><line x1="8" y1="12" x2="16" y2="12" />
-      </svg>
-    );
-  }
-  return (
-    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-    </svg>
-  );
-}
-
-const sourceColors: Record<string, string> = {
-  csv: "text-yellow-400",
-  tsv: "text-yellow-400/80",
-  parquet: "text-blue-400",
-  json: "text-green-400",
-  pegado: "text-emerald-400",
-  xlsx: "text-emerald-400",
-  xls: "text-emerald-400",
-  xlsm: "text-emerald-400",
-};
-
 const darkTheme = EditorView.theme(
   {
     "&": { backgroundColor: "#0f172a", color: "#e2e8f0", fontSize: "14px" },
@@ -92,7 +44,6 @@ const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function SqlEditor
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<Dataset | null>(null);
-  const [copiedTable, setCopiedTable] = useState<string | null>(null);
   const [editorPct, setEditorPct] = useState(10);
   const dragging = useRef(false);
 
@@ -193,7 +144,7 @@ const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function SqlEditor
 
   return (
     <div ref={containerRef} className="flex-1 flex flex-col bg-gray-950 min-h-0 min-w-0">
-      {/* Top header — light, just info + close */}
+      {/* Top header */}
       <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-800/60 bg-gray-900/80 shrink-0">
         <div className="w-6 h-6 rounded bg-blue-600/20 flex items-center justify-center shrink-0">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -202,30 +153,9 @@ const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function SqlEditor
             <path d="M2 12l10 5 10-5" />
           </svg>
         </div>
+        <span className="text-xs font-medium text-gray-400">Editor SQL</span>
         {tables.length > 0 && (
-          <div className="flex items-center gap-2 truncate max-w-[400px]" title={`Tablas disponibles para consultas SQL. Usá SELECT, JOIN, WHERE, GROUP BY, etc.`}>
-            {tables.map((t, i) => {
-              const color = sourceColors[t.source.toLowerCase()] ?? "text-gray-400";
-              return (
-                <span key={t.name} className={`inline-flex items-center gap-1 shrink-0 ${color}`}>
-                  {i > 0 && <span className="text-gray-700 mr-0.5">|</span>}
-                  <SourceIcon source={t.source} />
-                  <span
-                    className="text-[11px] font-medium cursor-pointer hover:text-blue-300 transition-colors"
-                    onClick={() => {
-                      navigator.clipboard.writeText(t.name);
-                      setCopiedTable(t.name);
-                      setTimeout(() => setCopiedTable(null), 1500);
-                    }}
-                    title="Copiar nombre de tabla"
-                  >
-                    {copiedTable === t.name ? "✓ Copiado" : t.name}
-                  </span>
-                  <span className="text-[10px] opacity-60">{t.source}</span>
-                </span>
-              );
-            })}
-          </div>
+          <span className="text-[10px] text-gray-600 font-mono ml-1">{tables.length} tablas</span>
         )}
         <div className="flex-1" />
         <button

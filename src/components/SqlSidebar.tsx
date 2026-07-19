@@ -5,13 +5,14 @@ import SqlLoadActions from "./SqlLoadActions";
 interface SqlSidebarProps {
   tables: TableInfo[];
   onInsertTable?: (name: string) => void;
+  onDropTable?: (name: string) => void;
   onLoadFile?: () => void;
   onPasteJson?: () => void;
   onConnectS3?: () => void;
   onBackToTable?: () => void;
 }
 
-export default function SqlSidebar({ tables, onInsertTable, onLoadFile, onPasteJson, onConnectS3, onBackToTable }: SqlSidebarProps) {
+export default function SqlSidebar({ tables, onInsertTable, onDropTable, onLoadFile, onPasteJson, onConnectS3, onBackToTable }: SqlSidebarProps) {
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-800 shrink-0">
@@ -24,7 +25,7 @@ export default function SqlSidebar({ tables, onInsertTable, onLoadFile, onPasteJ
         <span className="text-[10px] text-gray-600 font-mono ml-auto">{tables.length}</span>
       </div>
 
-      <TablesList tables={tables} onInsertTable={onInsertTable} />
+      <TablesList tables={tables} onInsertTable={onInsertTable} onDropTable={onDropTable} />
 
       <SqlLoadActions
         onLoadFile={onLoadFile}

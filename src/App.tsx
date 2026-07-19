@@ -33,6 +33,7 @@ export default function App() {
     return stored ? Math.max(160, Math.min(400, Number(stored))) : 220;
   });
   const tablesRef = useRef<TableInfo[]>([]);
+  const [tableList, setTableList] = useState<TableInfo[]>([]);
   const sqlEditorRef = useRef<SqlEditorHandle>(null);
 
   const activeDataset = tabs.find((t) => t.id === activeTabId)?.dataset ?? null;
@@ -44,9 +45,7 @@ export default function App() {
       const tab: Tab = { id: dataset.id, label: dataset.filename, dataset };
       setTabs((prev) => [...prev, tab]);
       setActiveTabId(tab.id);
-      setViewMode("table");
-      // Refresh available tables for SQL
-    invoke<TableInfo[]>("list_tables").then((t) => { tablesRef.current = t; });
+      invoke<TableInfo[]>("list_tables").then((t) => { tablesRef.current = t; setTableList(t); });
     } catch (err) {
       console.error("Error abriendo archivo:", err);
     }
@@ -80,6 +79,7 @@ export default function App() {
     try {
       const tables = await invoke<TableInfo[]>("list_tables");
       tablesRef.current = tables;
+      setTableList(tables);
     } catch { /* ignore */ }
     setViewMode("sql");
   }, []);
@@ -89,8 +89,7 @@ export default function App() {
     const tab: Tab = { id: dataset.id, label: dataset.filename, dataset };
     setTabs((prev) => [...prev, tab]);
     setActiveTabId(tab.id);
-    setViewMode("table");
-    invoke<TableInfo[]>("list_tables").then((t) => { tablesRef.current = t; });
+    invoke<TableInfo[]>("list_tables").then((t) => { tablesRef.current = t; setTableList(t); });
   }, []);
 
   const handleLoadS3 = useCallback(async (uri: string, credentials: S3Credentials) => {
@@ -98,8 +97,7 @@ export default function App() {
     const tab: Tab = { id: dataset.id, label: dataset.filename, dataset };
     setTabs((prev) => [...prev, tab]);
     setActiveTabId(tab.id);
-    setViewMode("table");
-    invoke<TableInfo[]>("list_tables").then((t) => { tablesRef.current = t; });
+    invoke<TableInfo[]>("list_tables").then((t) => { tablesRef.current = t; setTableList(t); });
   }, []);
 
   const toggleSidebar = useCallback(() => {
@@ -113,6 +111,16 @@ export default function App() {
   const handleSidebarWidth = useCallback((w: number) => {
     setSidebarWidth(w);
     localStorage.setItem("sidebar_width", String(w));
+  }, []);
+
+  const handleDropTable = useCallback(async (name: string) => {
+    try {
+      const updated = await invoke<TableInfo[]>("drop_table", { name });
+      tablesRef.current = updated;
+      setTableList(updated);
+    } catch (err) {
+      console.error("Error eliminando tabla:", err);
+    }
   }, []);
 
   const handleToggleTheme = useCallback(() => {
@@ -173,8 +181,9 @@ export default function App() {
             width={sidebarWidth}
             onWidthChange={handleSidebarWidth}
             viewMode={viewMode}
-            tables={tablesRef.current}
+            tables={tableList}
             onInsertTable={(name) => sqlEditorRef.current?.insertTableName(name)}
+            onDropTable={handleDropTable}
             onLoadFile={openFile}
             onPasteJson={() => setShowPasteModal(true)}
             onConnectS3={() => setShowS3Modal(true)}
@@ -195,7 +204,7 @@ export default function App() {
         {viewMode === "sql" ? (
           <SqlEditor
             ref={sqlEditorRef}
-            tables={tablesRef.current}
+            tables={tableList}
             onResult={handleSqlResult}
             onClose={() => setViewMode("table")}
           />

@@ -20,3 +20,13 @@ pub fn list_tables(
         Err(_) => vec![],
     }
 }
+
+#[tauri::command]
+pub fn drop_table(
+    name: String,
+    engine: tauri::State<'_, Mutex<SqlEngine>>,
+) -> Result<Vec<TableInfo>, String> {
+    let mut engine = engine.lock().map_err(|e| format!("Error de concurrencia: {}", e))?;
+    engine.unregister(&name)?;
+    Ok(engine.list_tables())
+}

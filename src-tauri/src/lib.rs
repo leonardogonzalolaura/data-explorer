@@ -45,6 +45,7 @@ pub fn run() {
             file_commands::load_json_text,
             commands::sql_commands::execute_sql,
             commands::sql_commands::list_tables,
+            commands::sql_commands::drop_table,
             commands::s3_commands::load_s3_file,
             commands::s3_commands::list_s3_objects,
             commands::s3_commands::list_s3_profiles,
