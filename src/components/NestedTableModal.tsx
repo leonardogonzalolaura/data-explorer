@@ -68,6 +68,7 @@ export default function NestedTableModal({ jsonStr, label, source, onClose }: Ne
       return {
         id: `nested-${Math.random().toString(36).slice(2)}`,
         filename: label,
+        path: "",
         columns,
         rows,
         total_rows: items.length,

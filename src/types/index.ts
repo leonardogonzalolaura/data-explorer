@@ -6,6 +6,7 @@ export interface ColumnInfo {
 export interface Dataset {
   id: string;
   filename: string;
+  path: string;
   columns: ColumnInfo[];
   rows: unknown[][];
   total_rows: number;

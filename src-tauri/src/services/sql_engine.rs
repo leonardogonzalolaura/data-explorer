@@ -62,6 +62,7 @@ impl SqlEngine {
         Ok(Dataset {
             id: uuid::Uuid::new_v4().to_string(),
             filename: "SQL Result".to_string(),
+            path: String::new(),
             columns,
             rows,
             total_rows,

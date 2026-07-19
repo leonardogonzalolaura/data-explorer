@@ -11,7 +11,7 @@ pub fn load_json_text(
     engine: State<'_, Mutex<SqlEngine>>,
 ) -> Result<Dataset, String> {
     let label = name.clone().unwrap_or_else(|| "JSON pegado".to_string());
-    let dataset = crate::loaders::json_loader::parse_json_str(&json_text, &label)?;
+    let dataset = crate::loaders::json_loader::parse_json_str(&json_text, &label, "")?;
 
     if let Ok(mut engine) = engine.lock() {
         let table_name = name

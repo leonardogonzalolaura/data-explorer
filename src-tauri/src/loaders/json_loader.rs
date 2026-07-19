@@ -18,11 +18,11 @@ impl Loader for JsonLoader {
         let content = std::fs::read_to_string(path)
             .map_err(|e| format!("Error leyendo JSON: {}", e))?;
         let filename = filename_from_path(path);
-        parse_json_str(&content, &filename)
+        parse_json_str(&content, &filename, path)
     }
 }
 
-pub fn parse_json_str(input: &str, filename: &str) -> Result<Dataset, String> {
+pub fn parse_json_str(input: &str, filename: &str, path: &str) -> Result<Dataset, String> {
     let json: Value = serde_json::from_str(input)
         .map_err(|e| format!("Error parseando JSON: {}", e))?;
 
@@ -31,6 +31,7 @@ pub fn parse_json_str(input: &str, filename: &str) -> Result<Dataset, String> {
         return Ok(Dataset {
             id: uuid::Uuid::new_v4().to_string(),
             filename: filename.to_string(),
+            path: path.to_string(),
             columns: vec![],
             rows: vec![],
             total_rows: 0,
@@ -54,6 +55,7 @@ pub fn parse_json_str(input: &str, filename: &str) -> Result<Dataset, String> {
     Ok(Dataset {
         id: uuid::Uuid::new_v4().to_string(),
         filename: filename.to_string(),
+        path: path.to_string(),
         columns,
         total_rows: rows.len(),
         rows,

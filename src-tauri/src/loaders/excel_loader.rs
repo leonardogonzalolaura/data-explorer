@@ -56,6 +56,7 @@ impl Loader for ExcelLoader {
             return Ok(Dataset {
                 id: uuid::Uuid::new_v4().to_string(),
                 filename,
+                path: path.to_string(),
                 columns: vec![],
                 rows: vec![],
                 total_rows: 0,
@@ -99,6 +100,7 @@ impl Loader for ExcelLoader {
         Ok(Dataset {
             id: uuid::Uuid::new_v4().to_string(),
             filename,
+            path: path.to_string(),
             columns,
             rows,
             total_rows,

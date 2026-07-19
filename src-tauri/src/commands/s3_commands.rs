@@ -169,7 +169,18 @@ pub async fn load_s3_file(
 
     let tmp_path = tmp.path().to_string_lossy().to_string();
 
-    let dataset = loader_service.load(&tmp_path)?;
+    let mut dataset = loader_service.load(&tmp_path)?;
+
+    // Use last 3 path parts from S3 key joined with _
+    let s3_path = std::path::Path::new(&key);
+    let components: Vec<_> = s3_path.components().collect();
+    let len = components.len();
+    let parts: Vec<_> = components
+        .iter()
+        .skip(len.saturating_sub(3))
+        .map(|c| c.as_os_str().to_string_lossy())
+        .collect();
+    dataset.filename = parts.join("_");
 
     if let Ok(mut engine) = engine.lock() {
         let p = std::path::Path::new(&key);

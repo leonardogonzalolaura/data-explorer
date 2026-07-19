@@ -46,6 +46,7 @@ pub fn dataset_from_df(df: DataFrame, path: &str) -> Result<Dataset, String> {
     Ok(Dataset {
         id: uuid::Uuid::new_v4().to_string(),
         filename,
+        path: path.to_string(),
         columns,
         rows,
         total_rows,

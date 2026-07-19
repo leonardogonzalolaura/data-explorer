@@ -10,6 +10,7 @@ pub struct ColumnInfo {
 pub struct Dataset {
     pub id: String,
     pub filename: String,
+    pub path: String,
     pub columns: Vec<ColumnInfo>,
     pub rows: Vec<Vec<serde_json::Value>>,
     pub total_rows: usize,

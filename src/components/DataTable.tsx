@@ -12,6 +12,7 @@ import type { ColumnDef, SortingState } from "@tanstack/react-table";
 import JsonTreeView from "./JsonTreeView";
 import JsonCellValue from "./JsonCellValue";
 import NestedTableModal from "./NestedTableModal";
+import SchemaModal from "./SchemaModal";
 
 interface DataTableProps {
   dataset: Dataset;
@@ -49,6 +50,9 @@ export default function DataTable({ dataset, onOpenSql }: DataTableProps) {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(500);
   const [nestedTable, setNestedTable] = useState<{ jsonStr: string; label: string; source: string } | null>(null);
+  const [showSchema, setShowSchema] = useState(false);
+
+  const isParquet = dataset.filename.toLowerCase().endsWith(".parquet");
 
   const columns = useMemo<ColumnDef<unknown[]>[]>(
     () =>
@@ -141,6 +145,23 @@ export default function DataTable({ dataset, onOpenSql }: DataTableProps) {
       {/* Toolbar */}
       <div className="flex items-center gap-3 px-4 py-2 text-xs text-gray-500 border-b border-gray-800 shrink-0 overflow-x-auto">
         <span className="font-medium text-gray-300 whitespace-nowrap">{dataset.filename}</span>
+        {isParquet && (
+          <>
+            <button
+              onClick={() => setShowSchema(true)}
+              className="flex items-center gap-1 text-[11px] text-amber-400 hover:text-amber-300 transition-colors whitespace-nowrap"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="16" y1="13" x2="8" y2="13" />
+                <line x1="16" y1="17" x2="8" y2="17" />
+              </svg>
+              Esquema
+            </button>
+            <span className="text-gray-600 shrink-0">|</span>
+          </>
+        )}
         <span className="text-gray-600 shrink-0">|</span>
         <span className="whitespace-nowrap">{dataset.total_rows.toLocaleString()} filas</span>
         <span className="text-gray-600 shrink-0">|</span>
@@ -366,6 +387,14 @@ export default function DataTable({ dataset, onOpenSql }: DataTableProps) {
         label={nestedTable.label}
         source={nestedTable.source}
         onClose={() => setNestedTable(null)}
+      />
+    )}
+    {showSchema && (
+      <SchemaModal
+        columns={dataset.columns}
+        filename={dataset.filename}
+        path={dataset.path}
+        onClose={() => setShowSchema(false)}
       />
     )}
     </>
