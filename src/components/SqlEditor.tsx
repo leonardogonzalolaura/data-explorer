@@ -4,6 +4,7 @@ import { EditorState } from "@codemirror/state";
 import { sql, SQLite } from "@codemirror/lang-sql";
 import { defaultKeymap } from "@codemirror/commands";
 import { syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
+import { autocompletion, type CompletionContext } from "@codemirror/autocomplete";
 import { invoke } from "@tauri-apps/api/core";
 import type { Dataset, TableInfo } from "../types";
 import SqlResults from "./SqlResults";
@@ -112,6 +113,23 @@ const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function SqlEditor
   const extensions = useMemo(
     () => [
       sql({ dialect: SQLite }),
+      autocompletion({
+        override: [
+          (context: CompletionContext) => {
+            const word = context.matchBefore(/\w*/);
+            if (!word || (word.from === word.to && !context.explicit)) return null;
+            return {
+              from: word.from,
+              options: tables.map((t) => ({
+                label: `"${t.name}"`,
+                type: "keyword" as const,
+                apply: `"${t.name}"`,
+              })),
+            };
+          },
+        ],
+        activateOnTyping: true,
+      }),
       keymap.of([
         ...defaultKeymap,
         { key: "Mod-Enter", run: () => { runQueryRef.current?.(); return true; } },
