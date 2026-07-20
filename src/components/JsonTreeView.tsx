@@ -1,5 +1,6 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import type { Dataset } from "../types";
+import JsonViewerModal from "./JsonViewerModal";
 
 interface JsonTreeViewProps {
   dataset: Dataset;
@@ -21,7 +22,19 @@ function unflattenRow(columns: { name: string }[], row: unknown[]): Record<strin
   return result;
 }
 
-const VALUE_COLORS: Record<string, string> = {
+function tryParseJson(raw: unknown): unknown | null {
+  if (typeof raw === "object" && raw !== null) return raw;
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  if (!(trimmed.startsWith("{") || trimmed.startsWith("["))) return null;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+}
+
+const C = {
   string: "#22c55e",
   number: "#fb923c",
   boolean: "#a78bfa",
@@ -31,87 +44,64 @@ const VALUE_COLORS: Record<string, string> = {
   punctuation: "#6b7280",
 };
 
-function JsonValueDisplay({ value, defaultExpanded }: { value: unknown; defaultExpanded: boolean }) {
-  const [expanded, setExpanded] = useState(defaultExpanded);
-  const type = typeof value;
-  const isObj = value !== null && type === "object" && !Array.isArray(value);
-  const isArr = Array.isArray(value);
-  const isExpandable = isObj || isArr;
+function LeafValue({ value }: { value: unknown }) {
+  if (value === null) return <span style={{ color: C.null, fontStyle: "italic" }}>null</span>;
+  if (typeof value === "string") return <span style={{ color: C.string }}>"{String(value)}"</span>;
+  if (typeof value === "number") return <span style={{ color: C.number }}>{String(value)}</span>;
+  if (typeof value === "boolean") return <span style={{ color: C.boolean }}>{String(value)}</span>;
+  return <span>{String(value)}</span>;
+}
 
-  const entries = useMemo(() => {
-    if (isObj) return Object.entries(value as Record<string, unknown>);
-    if (isArr) return (value as unknown[]).map((v, i) => [String(i), v] as const);
-    return [];
-  }, [value, isObj, isArr]);
+function isExpandable(value: unknown): boolean {
+  if (value !== null && typeof value === "object") return true;
+  return tryParseJson(value) !== null;
+}
 
-  const itemCount = isObj ? Object.keys(value as Record<string, unknown>).length : isArr ? (value as unknown[]).length : 0;
-
-  if (!isExpandable) {
-    if (value === null) return <span style={{ color: VALUE_COLORS.null, fontStyle: "italic" }}>null</span>;
-    if (type === "string") return <span style={{ color: VALUE_COLORS.string }}>"{String(value)}"</span>;
-    if (type === "number") return <span style={{ color: VALUE_COLORS.number }}>{String(value)}</span>;
-    if (type === "boolean") return <span style={{ color: VALUE_COLORS.boolean }}>{String(value)}</span>;
-    return <span>{String(value)}</span>;
+function itemLabel(value: unknown): string {
+  const parsed = tryParseJson(value);
+  const target = parsed ?? value;
+  if (target === null || typeof target !== "object") return String(target);
+  if (Array.isArray(target)) {
+    const n = target.length;
+    return n === 1 ? "[1 item]" : `[${n} items]`;
   }
-
-  const openBracket = isObj ? "{" : "[";
-  const closeBracket = isObj ? "}" : "]";
-
-  return (
-    <span>
-      <span
-        onClick={() => setExpanded(!expanded)}
-        style={{ cursor: "pointer", color: VALUE_COLORS.punctuation, userSelect: "none" }}
-        className="hover:text-gray-300 transition-colors"
-      >
-        <span className="mr-0.5 text-[10px]">{expanded ? "▾" : "▸"}</span>
-        <span style={{ color: VALUE_COLORS.bracket }}>{openBracket}</span>
-        <span style={{ color: VALUE_COLORS.punctuation }} className="ml-1 text-[11px]">
-          {itemCount} {isObj ? (itemCount === 1 ? "key" : "keys") : itemCount === 1 ? "item" : "items"}
-        </span>
-        {!expanded && (
-          <>
-            <span style={{ color: VALUE_COLORS.punctuation }}> </span>
-            <span style={{ color: VALUE_COLORS.bracket }}>{closeBracket}</span>
-          </>
-        )}
-      </span>
-      {expanded && (
-        <span className="block" style={{ paddingLeft: "16px", borderLeft: "1px solid rgba(75, 85, 99, 0.3)", marginLeft: "4px" }}>
-          {entries.map(([key, val]) => (
-            <div key={key} className="my-0.5" style={{ lineHeight: "1.5" }}>
-              {isObj && (
-                <span>
-                  <span style={{ color: VALUE_COLORS.key }}>"{key}"</span>
-                  <span style={{ color: VALUE_COLORS.punctuation }}>: </span>
-                </span>
-              )}
-              {isArr && <span style={{ color: VALUE_COLORS.punctuation }}>{key}: </span>}
-              <JsonValueDisplay value={val} defaultExpanded={false} />
-              <span style={{ color: VALUE_COLORS.punctuation }}>,</span>
-            </div>
-          ))}
-          <div style={{ color: VALUE_COLORS.bracket }}>{closeBracket}</div>
-        </span>
-      )}
-    </span>
-  );
+  const n = Object.keys(target).length;
+  return n === 1 ? "{1 key}" : `{${n} keys}`;
 }
 
 export default function JsonTreeView({ dataset, onToggleFormat }: JsonTreeViewProps) {
   const [currentRow, setCurrentRow] = useState(0);
+  const [modalJson, setModalJson] = useState<{ value: unknown; label: string } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const obj = useMemo(() => {
     if (dataset.rows.length === 0) return null;
     return unflattenRow(dataset.columns, dataset.rows[currentRow]);
   }, [dataset.columns, dataset.rows, currentRow]);
 
+  const entries = useMemo(() => {
+    if (!obj) return [];
+    return Object.entries(obj);
+  }, [obj]);
+
   const totalRows = dataset.total_rows;
   const displayRows = dataset.rows.length;
 
+  const handleCopy = useCallback(async () => {
+    if (!obj) return;
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(obj, null, 2));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {}
+  }, [obj]);
+
+  const handleOpenModal = useCallback((value: unknown, label: string) => {
+    setModalJson({ value, label });
+  }, []);
+
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      {/* Toolbar */}
       <div className="flex items-center gap-3 px-4 py-2 text-xs text-gray-500 border-b border-gray-800 shrink-0 overflow-x-auto">
         <span className="font-medium text-gray-300 whitespace-nowrap">{dataset.filename}</span>
         <span className="text-gray-600 shrink-0">|</span>
@@ -128,6 +118,30 @@ export default function JsonTreeView({ dataset, onToggleFormat }: JsonTreeViewPr
               className="text-[11px] text-emerald-400 hover:text-emerald-300 transition-colors whitespace-nowrap"
             >Tabla</button>
           </>
+        )}
+        <div className="hidden sm:block w-px h-5 bg-gray-700" />
+        {obj && (
+          <button
+            onClick={handleCopy}
+            className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-200 transition-colors whitespace-nowrap"
+          >
+            {copied ? (
+              <>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                <span className="text-green-400">Copiado</span>
+              </>
+            ) : (
+              <>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                </svg>
+                Copiar JSON
+              </>
+            )}
+          </button>
         )}
         <div className="flex-1" />
         {displayRows > 0 && (
@@ -149,14 +163,53 @@ export default function JsonTreeView({ dataset, onToggleFormat }: JsonTreeViewPr
         )}
       </div>
 
-      {/* Tree body */}
       <div className="flex-1 overflow-auto p-4 font-mono text-xs leading-relaxed">
-        {obj ? (
-          <JsonValueDisplay value={obj} defaultExpanded />
-        ) : (
+        {!obj && (
           <div className="text-gray-500 italic">Sin datos</div>
         )}
+        {obj && (
+          <div className="inline-block min-w-full">
+            <span style={{ color: C.bracket }}>{`{`}</span>
+            <div className="pl-4 border-l border-gray-800/40 ml-1 my-1">
+              {entries.map(([key, value]) => {
+                const exp = isExpandable(value);
+                return (
+                  <div key={key} className="my-1" style={{ lineHeight: "1.6" }}>
+                    <span style={{ color: C.key }}>"{key}"</span>
+                    <span style={{ color: C.punctuation }}>: </span>
+                    {exp ? (
+                      <span
+                        onClick={() => handleOpenModal(tryParseJson(value) ?? value, key)}
+                        style={{ cursor: "pointer", userSelect: "none" }}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded hover:bg-blue-900/30 transition-colors"
+                      >
+                        <span className="text-[10px]" style={{ color: C.punctuation }}>▸</span>
+                        <span style={{ color: C.bracket }}>{Array.isArray(value) ? "[" : "{"}</span>
+                        <span className="text-[11px]" style={{ color: C.punctuation }}>
+                          {itemLabel(value)}
+                        </span>
+                        <span style={{ color: C.bracket }}>{Array.isArray(value) ? "]" : "}"}</span>
+                      </span>
+                    ) : (
+                      <LeafValue value={value} />
+                    )}
+                    <span style={{ color: C.punctuation }}>,</span>
+                  </div>
+                );
+              })}
+            </div>
+            <span style={{ color: C.bracket }}>{`}`}</span>
+          </div>
+        )}
       </div>
+
+      {modalJson && (
+        <JsonViewerModal
+          value={modalJson.value}
+          label={`${dataset.filename} → ${modalJson.label}`}
+          onClose={() => setModalJson(null)}
+        />
+      )}
     </div>
   );
 }

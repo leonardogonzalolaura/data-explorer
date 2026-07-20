@@ -10,12 +10,19 @@ import SqlResults from "./SqlResults";
 
 export interface SqlEditorHandle {
   insertTableName: (name: string) => void;
+  getSql: () => string;
+  getResult: () => Dataset | null;
+  getError: () => string | null;
+  getEditorPct: () => number;
 }
 
 interface SqlEditorProps {
   tables: TableInfo[];
-  onResult: (dataset: Dataset) => void;
-  onClose: () => void;
+  initialSql?: string;
+  initialResult?: Dataset | null;
+  initialError?: string | null;
+  initialEditorPct?: number;
+  onResult?: (dataset: Dataset) => void;
 }
 
 const darkTheme = EditorView.theme(
@@ -35,17 +42,24 @@ const darkTheme = EditorView.theme(
   { dark: true }
 );
 
-const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function SqlEditor({ tables, onResult, onClose }, ref) {
+const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function SqlEditor({ tables, initialSql, initialResult, initialError, initialEditorPct, onResult }, ref) {
   const editorRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const runQueryRef = useRef<() => Promise<void>>(undefined);
   const runningRef = useRef(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(initialError ?? null);
   const [running, setRunning] = useState(false);
-  const [result, setResult] = useState<Dataset | null>(null);
-  const [editorPct, setEditorPct] = useState(10);
+  const [result, setResult] = useState<Dataset | null>(initialResult ?? null);
+  const [editorPct, setEditorPct] = useState(initialEditorPct ?? 10);
   const dragging = useRef(false);
+  const resultRef = useRef<Dataset | null>(result);
+  const errorRef = useRef<string | null>(error);
+  const editorPctRef = useRef(editorPct);
+
+  useEffect(() => { resultRef.current = result; }, [result]);
+  useEffect(() => { errorRef.current = error; }, [error]);
+  useEffect(() => { editorPctRef.current = editorPct; }, [editorPct]);
 
   const runQuery = useCallback(async () => {
     if (runningRef.current || !viewRef.current) return;
@@ -56,7 +70,7 @@ const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function SqlEditor
     try {
       const dataset = await invoke<Dataset>("execute_sql", { sql: sqlText });
       setResult(dataset);
-      onResult(dataset);
+      onResult?.(dataset);
     } catch (err) {
       setError(String(err));
     } finally {
@@ -67,6 +81,10 @@ const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function SqlEditor
 
   runQueryRef.current = runQuery;
 
+  const defaultDoc = useMemo(() => {
+    return initialSql ?? `SELECT * FROM ${tables[0]?.name ?? "data"} LIMIT 100`;
+  }, [tables, initialSql]);
+
   useImperativeHandle(ref, () => ({
     insertTableName(name: string) {
       const view = viewRef.current;
@@ -76,6 +94,18 @@ const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function SqlEditor
         selection: { anchor: view.state.selection.main.from + name.length },
       });
       view.focus();
+    },
+    getSql() {
+      return viewRef.current?.state.doc.toString() ?? "";
+    },
+    getResult() {
+      return resultRef.current;
+    },
+    getError() {
+      return errorRef.current;
+    },
+    getEditorPct() {
+      return editorPctRef.current;
     },
   }), []);
 
@@ -98,7 +128,7 @@ const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function SqlEditor
   useEffect(() => {
     if (!editorRef.current || viewRef.current) return;
     const state = EditorState.create({
-      doc: `SELECT * FROM ${tables[0]?.name ?? "data"} LIMIT 100`,
+      doc: defaultDoc,
       extensions,
     });
     const view = new EditorView({ state, parent: editorRef.current });
@@ -144,31 +174,6 @@ const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function SqlEditor
 
   return (
     <div ref={containerRef} className="flex-1 flex flex-col bg-gray-950 min-h-0 min-w-0">
-      {/* Top header */}
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-800/60 bg-gray-900/80 shrink-0">
-        <div className="w-6 h-6 rounded bg-blue-600/20 flex items-center justify-center shrink-0">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 2L2 7l10 5 10-5-10-5z" />
-            <path d="M2 17l10 5 10-5" />
-            <path d="M2 12l10 5 10-5" />
-          </svg>
-        </div>
-        <span className="text-xs font-medium text-gray-400">Editor SQL</span>
-        {tables.length > 0 && (
-          <span className="text-[10px] text-gray-600 font-mono ml-1">{tables.length} tablas</span>
-        )}
-        <div className="flex-1" />
-        <button
-          onClick={onClose}
-          className="p-1.5 text-gray-600 hover:text-gray-300 hover:bg-gray-800 rounded transition-colors"
-          title="Cerrar (Ctrl+Shift+W)"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
-      </div>
-
       {/* Editor panel */}
       <div
         className="flex flex-col overflow-hidden min-h-0"

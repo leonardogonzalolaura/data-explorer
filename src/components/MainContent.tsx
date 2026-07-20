@@ -3,17 +3,24 @@ import type { Dataset } from "../types";
 
 interface MainContentProps {
   activeDataset: Dataset | null;
+  onOpenFile?: () => void;
   onOpenSql?: () => void;
   onOpenPasteModal?: () => void;
   onOpenS3?: () => void;
 }
 
-export default function MainContent({ activeDataset, onOpenSql, onOpenPasteModal, onOpenS3 }: MainContentProps) {
+const SHORTCUT_CHIPS = [
+  { keys: "Ctrl+Shift+O", label: "Abrir archivo", action: "onOpenFile" as const },
+  { keys: "Ctrl+Shift+J", label: "Pegar JSON", action: "onOpenPasteModal" as const },
+  { keys: "Ctrl+Shift+K", label: "SQL", action: "onOpenSql" as const },
+  { keys: "Ctrl+Shift+S", label: "Conectar S3", action: "onOpenS3" as const },
+];
+
+export default function MainContent({ activeDataset, onOpenFile, onOpenSql, onOpenPasteModal, onOpenS3 }: MainContentProps) {
   if (!activeDataset) {
     return (
       <main className="flex-1 flex items-center justify-center p-8 overflow-auto">
         <div className="flex flex-col items-center gap-8 max-w-sm w-full">
-          {/* Logo / icon */}
           <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500/10 to-blue-500/5 border border-blue-500/10 flex items-center justify-center">
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 3v18h18" />
@@ -21,35 +28,41 @@ export default function MainContent({ activeDataset, onOpenSql, onOpenPasteModal
             </svg>
           </div>
 
-          {/* Title + subtitle */}
           <div className="text-center">
             <h1 className="text-lg font-medium text-gray-200">Data Explorer</h1>
             <p className="text-sm text-gray-600 mt-1">Navegá, consultá y explorá tus datos</p>
           </div>
 
-          {/* Shortcut chips */}
           <div className="flex flex-wrap justify-center gap-2 max-w-xs">
-            {[
-              { keys: "Ctrl+Shift+O", label: "Abrir archivo" },
-              { keys: "Ctrl+Shift+J", label: "Pegar JSON" },
-              { keys: "Ctrl+Shift+K", label: "SQL" },
-              { keys: "Ctrl+Shift+S", label: "Conectar S3" },
-            ].map(({ keys, label }) => (
-              <span key={keys} className="inline-flex items-center gap-1.5 bg-gray-900 border border-gray-800 rounded-full px-2.5 py-1">
-                <kbd className="text-[10px] font-mono text-blue-400 bg-blue-500/10 rounded px-1 py-0.5">{keys}</kbd>
-                <span className="text-[11px] text-gray-500">{label}</span>
-              </span>
-            ))}
+            {SHORTCUT_CHIPS.map(({ keys, label, action }) => {
+              const handler = { onOpenFile, onOpenPasteModal, onOpenSql, onOpenS3 }[action];
+              return handler ? (
+                <button
+                  key={keys}
+                  onClick={handler}
+                  className="inline-flex items-center gap-1.5 bg-gray-900 border border-gray-800 rounded-full px-2.5 py-1 hover:border-blue-500/40 hover:bg-gray-800/60 transition-all cursor-pointer"
+                >
+                  <kbd className="text-[10px] font-mono text-blue-400 bg-blue-500/10 rounded px-1 py-0.5">{keys}</kbd>
+                  <span className="text-[11px] text-gray-400 group-hover:text-gray-300">{label}</span>
+                </button>
+              ) : (
+                <span
+                  key={keys}
+                  className="inline-flex items-center gap-1.5 bg-gray-900 border border-gray-800 rounded-full px-2.5 py-1 opacity-50"
+                >
+                  <kbd className="text-[10px] font-mono text-gray-500 bg-gray-800 rounded px-1 py-0.5">{keys}</kbd>
+                  <span className="text-[11px] text-gray-600">{label}</span>
+                </span>
+              );
+            })}
           </div>
 
-          {/* Divider */}
           <div className="flex items-center gap-3 w-full">
             <div className="flex-1 h-px bg-gray-800" />
             <span className="text-[11px] text-gray-600 font-medium">ACCIONES RÁPIDAS</span>
             <div className="flex-1 h-px bg-gray-800" />
           </div>
 
-          {/* Action buttons */}
           <div className="flex flex-col gap-2 w-full">
             {onOpenPasteModal && (
               <button onClick={onOpenPasteModal} className="flex items-center gap-2.5 w-full px-3.5 py-2.5 rounded-lg bg-gray-900 border border-gray-800 hover:border-blue-500/30 hover:bg-gray-800/50 transition-all group cursor-pointer">

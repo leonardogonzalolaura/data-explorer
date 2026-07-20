@@ -6,17 +6,27 @@ import DataSidebar from "./components/DataSidebar";
 import MainContent from "./components/MainContent";
 import SqlEditor from "./components/SqlEditor";
 import type { SqlEditorHandle } from "./components/SqlEditor";
+import TabBar from "./components/TabBar";
 import PasteJsonModal from "./components/PasteJsonModal";
 import S3ConnectionModal from "./components/S3ConnectionModal";
 import AboutModal from "./components/AboutModal";
 import { useHotkeys } from "./hooks/useHotkeys";
 import { TauriDataRepository } from "./services/dataRepository";
 import { invoke } from "@tauri-apps/api/core";
-import type { Tab, AppInfo, Dataset, TableInfo, S3Credentials } from "./types";
+import type { Tab, AppInfo, TableInfo, S3Credentials, Dataset } from "./types";
 
 const repository = new TauriDataRepository();
 
 type ViewMode = "table" | "sql";
+
+interface SqlQueryTab {
+  id: string;
+  label: string;
+  sql: string;
+  result: Dataset | null;
+  error: string | null;
+  editorPct: number;
+}
 
 export default function App() {
   const [tabs, setTabs] = useState<Tab[]>([]);
@@ -35,6 +45,10 @@ export default function App() {
   const tablesRef = useRef<TableInfo[]>([]);
   const [tableList, setTableList] = useState<TableInfo[]>([]);
   const sqlEditorRef = useRef<SqlEditorHandle>(null);
+
+  // SQL tabs
+  const [sqlTabs, setSqlTabs] = useState<SqlQueryTab[]>([{ id: crypto.randomUUID(), label: "Query 1", sql: "", result: null, error: null, editorPct: 10 }]);
+  const [activeSqlTabId, setActiveSqlTabId] = useState(sqlTabs[0].id);
 
   const activeDataset = tabs.find((t) => t.id === activeTabId)?.dataset ?? null;
 
@@ -69,19 +83,65 @@ export default function App() {
     });
   }, [tabs]);
 
-  const handleSqlResult = useCallback((dataset: Dataset) => {
-    const tab: Tab = { id: dataset.id, label: dataset.filename, dataset };
-    setTabs((prev) => [...prev, tab]);
-    setActiveTabId(tab.id);
-  }, []);
+  const saveActiveTabState = useCallback(() => {
+    if (sqlEditorRef.current) {
+      setSqlTabs((prev) =>
+        prev.map((t) =>
+          t.id === activeSqlTabId
+            ? {
+                ...t,
+                sql: sqlEditorRef.current!.getSql(),
+                result: sqlEditorRef.current!.getResult(),
+                error: sqlEditorRef.current!.getError(),
+                editorPct: sqlEditorRef.current!.getEditorPct(),
+              }
+            : t
+        )
+      );
+    }
+  }, [activeSqlTabId]);
 
   const openSqlEditor = useCallback(async () => {
+    if (sqlTabs.length === 0) {
+      setSqlTabs([{ id: crypto.randomUUID(), label: "Query 1", sql: "", result: null, error: null, editorPct: 10 }]);
+      setActiveSqlTabId(sqlTabs[0]?.id ?? "");
+    }
     try {
       const tables = await invoke<TableInfo[]>("list_tables");
       tablesRef.current = tables;
       setTableList(tables);
     } catch { /* ignore */ }
     setViewMode("sql");
+  }, [sqlTabs]);
+
+  const handleSelectSqlTab = useCallback((id: string) => {
+    saveActiveTabState();
+    setActiveSqlTabId(id);
+  }, [saveActiveTabState]);
+
+  const handleNewSqlTab = useCallback(() => {
+    saveActiveTabState();
+    const newId = crypto.randomUUID();
+    setSqlTabs((prev) => [...prev, { id: newId, label: `Query ${prev.length + 1}`, sql: "", result: null, error: null, editorPct: 10 }]);
+    setActiveSqlTabId(newId);
+  }, [saveActiveTabState]);
+
+  const handleCloseSqlTab = useCallback((id: string) => {
+    let newActiveId: string | null = null;
+    setSqlTabs((prev) => {
+      const idx = prev.findIndex((t) => t.id === id);
+      const next = prev.filter((t) => t.id !== id);
+      if (next.length === 0) {
+        setViewMode("table");
+        return prev;
+      }
+      const newIdx = Math.min(idx, next.length - 1);
+      newActiveId = next[Math.max(0, newIdx)].id;
+      return next;
+    });
+    if (newActiveId) {
+      setActiveSqlTabId(newActiveId);
+    }
   }, []);
 
   const handleLoadJson = useCallback(async (jsonText: string, name?: string) => {
@@ -203,14 +263,31 @@ export default function App() {
           </button>
         )}
         {viewMode === "sql" ? (
-          <SqlEditor
-            ref={sqlEditorRef}
-            tables={tableList}
-            onResult={handleSqlResult}
-            onClose={() => setViewMode("table")}
-          />
+          <div className="flex-1 flex flex-col min-w-0">
+            <TabBar
+              tabs={sqlTabs}
+              activeTabId={activeSqlTabId}
+              onSelectTab={handleSelectSqlTab}
+              onCloseTab={handleCloseSqlTab}
+              onNewTab={handleNewSqlTab}
+            />
+            {(() => {
+              const activeTab = sqlTabs.find((t) => t.id === activeSqlTabId);
+              return (
+                <SqlEditor
+                  key={activeSqlTabId}
+                  ref={sqlEditorRef}
+                  tables={tableList}
+                  initialSql={activeTab?.sql ?? ""}
+                  initialResult={activeTab?.result ?? null}
+                  initialError={activeTab?.error ?? null}
+                  initialEditorPct={activeTab?.editorPct ?? 10}
+                />
+              );
+            })()}
+          </div>
         ) : (
-          <MainContent activeDataset={activeDataset} onOpenSql={openSqlEditor} onOpenPasteModal={() => setShowPasteModal(true)} onOpenS3={() => setShowS3Modal(true)} />
+          <MainContent activeDataset={activeDataset} onOpenFile={openFile} onOpenSql={openSqlEditor} onOpenPasteModal={() => setShowPasteModal(true)} onOpenS3={() => setShowS3Modal(true)} />
         )}
       </div>
 
