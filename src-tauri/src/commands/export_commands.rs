@@ -19,8 +19,9 @@ pub fn export_dataset(dataset: Dataset, format: String, path: String) -> Result<
             writer.finish(&mut df).map_err(|e| format!("Error escribiendo Parquet: {}", e))?;
         }
         "json" => {
+            use polars::io::json::JsonFormat;
             let file = File::create(&path).map_err(|e| format!("Error creando archivo: {}", e))?;
-            let mut writer = JsonWriter::new(file);
+            let mut writer = JsonWriter::new(file).with_json_format(JsonFormat::Json);
             writer.finish(&mut df).map_err(|e| format!("Error escribiendo JSON: {}", e))?;
         }
         _ => return Err(format!("Formato no soportado: {}", format)),
