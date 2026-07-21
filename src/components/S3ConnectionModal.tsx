@@ -41,6 +41,8 @@ export default function S3ConnectionModal({ repository, onLoadS3, onClose }: S3C
   const [rightObjects, setRightObjects] = useState<S3Object[]>([]);
   const [rightLoading, setRightLoading] = useState(false);
 
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [loadingCount, setLoadingCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [showNewProfile, setShowNewProfile] = useState(false);
 
@@ -121,6 +123,7 @@ export default function S3ConnectionModal({ repository, onLoadS3, onClose }: S3C
     setActiveProfileName(profileName);
     setPathInput(prefix);
     setPathEditing(false);
+    setSelectedKeys(new Set());
   }, []);
 
   const navigateToSilent = useCallback((bucket: string, prefix: string, profileName: string) => {
@@ -198,6 +201,37 @@ export default function S3ConnectionModal({ repository, onLoadS3, onClose }: S3C
       setError(String(err));
     }
   }, [activeBucket, activeProfileName, getProfile, onLoadS3, onClose]);
+
+  const toggleFile = useCallback((obj: S3Object) => {
+    if (obj.is_dir) return;
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(obj.key)) next.delete(obj.key);
+      else next.add(obj.key);
+      return next;
+    });
+  }, []);
+
+  const handleLoadSelected = useCallback(async () => {
+    const profile = getProfile(activeProfileName);
+    if (!profile || selectedKeys.size === 0) return;
+    setError(null);
+    const selected = rightObjects.filter((o) => !o.is_dir && selectedKeys.has(o.key));
+    for (let i = 0; i < selected.length; i++) {
+      setLoadingCount(i + 1);
+      const obj = selected[i];
+      const uri = `s3://${activeBucket}/${obj.key}`;
+      try {
+        await onLoadS3(uri, profile.credentials);
+      } catch (err) {
+        setError(`Error en ${obj.key}: ${err}`);
+        break;
+      }
+    }
+    setLoadingCount(0);
+    setSelectedKeys(new Set());
+    onClose();
+  }, [selectedKeys, rightObjects, activeBucket, activeProfileName, getProfile, onLoadS3, onClose]);
 
   const addBucket = useCallback(async (profileName: string) => {
     if (!newBucketInput.trim()) return;
@@ -437,6 +471,24 @@ export default function S3ConnectionModal({ repository, onLoadS3, onClose }: S3C
                 {rightLoading && <span className="text-[11px] text-gray-600 animate-pulse">cargando...</span>}
               </div>
 
+              {/* Batch load bar */}
+              {selectedKeys.size > 0 && (
+                <div className="flex items-center gap-3 px-4 py-2 border-b border-gray-800 shrink-0 bg-gray-900/50">
+                  <span className="text-[11px] text-gray-400">{selectedKeys.size} archivo(s) seleccionado(s)</span>
+                  <div className="flex-1" />
+                  {loadingCount > 0 && (
+                    <span className="text-[11px] text-blue-400 animate-pulse">Cargando {loadingCount}/{selectedKeys.size}...</span>
+                  )}
+                  <button
+                    onClick={handleLoadSelected}
+                    disabled={loadingCount > 0}
+                    className="px-3 py-1 text-[11px] font-medium rounded bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 transition-colors"
+                  >
+                    {loadingCount > 0 ? "Cargando..." : `Cargar ${selectedKeys.size}`}
+                  </button>
+                </div>
+              )}
+
               {/* Content */}
               <div className="flex-1 overflow-auto p-3 space-y-0.5">
                 {rightObjects.length === 0 && !rightLoading && (
@@ -467,13 +519,28 @@ export default function S3ConnectionModal({ repository, onLoadS3, onClose }: S3C
                       {obj.key.replace(activePrefix, "")}
                     </button>
                   ) : (
-                    <button key={obj.key} onClick={() => handleLoadFile(obj)} className="flex items-center gap-2 w-full text-left text-[11px] px-2 py-1.5 rounded text-gray-400 hover:text-blue-400 hover:bg-blue-950/30 transition-colors">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <div key={obj.key} onClick={() => toggleFile(obj)} className={`group flex items-center gap-2 w-full text-left text-[11px] px-2 py-1.5 rounded cursor-pointer transition-colors ${selectedKeys.has(obj.key) ? "bg-blue-950/30 text-blue-300" : "text-gray-400 hover:bg-gray-800/50"}`}>
+                      {selectedKeys.has(obj.key) ? (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="#3b82f6" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+                          <rect x="3" y="3" width="18" height="18" rx="3" />
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      ) : (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4b5563" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+                          <rect x="3" y="3" width="18" height="18" rx="3" />
+                        </svg>
+                      )}
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
                       </svg>
                       <span className="flex-1 truncate">{obj.key.replace(activePrefix, "")}</span>
                       <span className="text-gray-600 shrink-0">{formatSize(obj.size)}</span>
-                    </button>
+                      <button onClick={(e) => { e.stopPropagation(); handleLoadFile(obj); }} className="p-0.5 rounded text-gray-600 hover:text-blue-400 hover:bg-gray-700 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" title="Cargar ahora">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="9 18 15 12 9 6" />
+                        </svg>
+                      </button>
+                    </div>
                   )
                 ))}
               </div>

@@ -1,6 +1,7 @@
 interface TabBarTab {
   id: string;
   label: string;
+  path?: string;
 }
 
 interface TabBarProps {
@@ -26,6 +27,7 @@ export default function TabBar({
         <div
           key={tab.id}
           onClick={() => onSelectTab(tab.id)}
+          title={tab.path ?? tab.label}
           className={`group flex items-center gap-2 px-3 text-xs border-r border-gray-800 cursor-pointer transition-colors ${
             tab.id === activeTabId
               ? "bg-gray-800 text-gray-100"

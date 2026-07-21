@@ -54,6 +54,8 @@ const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function SqlEditor
   const [result, setResult] = useState<Dataset | null>(initialResult ?? null);
   const [editorPct, setEditorPct] = useState(initialEditorPct ?? 10);
   const dragging = useRef(false);
+  const tablesRef = useRef(tables);
+  tablesRef.current = tables;
   const resultRef = useRef<Dataset | null>(result);
   const errorRef = useRef<string | null>(error);
   const editorPctRef = useRef(editorPct);
@@ -120,7 +122,7 @@ const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function SqlEditor
             if (!word || (word.from === word.to && !context.explicit)) return null;
             return {
               from: word.from,
-              options: tables.map((t) => ({
+              options: tablesRef.current.map((t) => ({
                 label: `"${t.name}"`,
                 type: "keyword" as const,
                 apply: `"${t.name}"`,
