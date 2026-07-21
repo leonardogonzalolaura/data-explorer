@@ -26,6 +26,7 @@ interface SqlQueryTab {
   result: Dataset | null;
   error: string | null;
   editorPct: number;
+  showResult: boolean;
 }
 
 export default function App() {
@@ -47,7 +48,7 @@ export default function App() {
   const sqlEditorRef = useRef<SqlEditorHandle>(null);
 
   // SQL tabs
-  const [sqlTabs, setSqlTabs] = useState<SqlQueryTab[]>([{ id: crypto.randomUUID(), label: "Query 1", sql: "", result: null, error: null, editorPct: 10 }]);
+  const [sqlTabs, setSqlTabs] = useState<SqlQueryTab[]>([{ id: crypto.randomUUID(), label: "Query 1", sql: "", result: null, error: null, editorPct: 50, showResult: false }]);
   const [activeSqlTabId, setActiveSqlTabId] = useState(sqlTabs[0].id);
 
   const activeDataset = tabs.find((t) => t.id === activeTabId)?.dataset ?? null;
@@ -94,6 +95,7 @@ export default function App() {
                 result: sqlEditorRef.current!.getResult(),
                 error: sqlEditorRef.current!.getError(),
                 editorPct: sqlEditorRef.current!.getEditorPct(),
+                showResult: sqlEditorRef.current!.getShowResult(),
               }
             : t
         )
@@ -103,7 +105,7 @@ export default function App() {
 
   const openSqlEditor = useCallback(async () => {
     if (sqlTabs.length === 0) {
-      setSqlTabs([{ id: crypto.randomUUID(), label: "Query 1", sql: "", result: null, error: null, editorPct: 10 }]);
+      setSqlTabs([{ id: crypto.randomUUID(), label: "Query 1", sql: "", result: null, error: null, editorPct: 50, showResult: false }]);
       setActiveSqlTabId(sqlTabs[0]?.id ?? "");
     }
     try {
@@ -122,9 +124,13 @@ export default function App() {
   const handleNewSqlTab = useCallback(() => {
     saveActiveTabState();
     const newId = crypto.randomUUID();
-    setSqlTabs((prev) => [...prev, { id: newId, label: `Query ${prev.length + 1}`, sql: "", result: null, error: null, editorPct: 10 }]);
+    setSqlTabs((prev) => [...prev, { id: newId, label: `Query ${prev.length + 1}`, sql: "", result: null, error: null, editorPct: 50, showResult: false }]);
     setActiveSqlTabId(newId);
   }, [saveActiveTabState]);
+
+  const handleCloseAllSqlTabs = useCallback(() => {
+    setViewMode("table");
+  }, []);
 
   const handleCloseSqlTab = useCallback((id: string) => {
     let newActiveId: string | null = null;
@@ -270,6 +276,7 @@ export default function App() {
               onSelectTab={handleSelectSqlTab}
               onCloseTab={handleCloseSqlTab}
               onNewTab={handleNewSqlTab}
+              onCloseAll={handleCloseAllSqlTabs}
             />
             {(() => {
               const activeTab = sqlTabs.find((t) => t.id === activeSqlTabId);
@@ -281,7 +288,8 @@ export default function App() {
                   initialSql={activeTab?.sql ?? ""}
                   initialResult={activeTab?.result ?? null}
                   initialError={activeTab?.error ?? null}
-                  initialEditorPct={activeTab?.editorPct ?? 10}
+                  initialEditorPct={activeTab?.editorPct ?? 50}
+                  initialShowResult={activeTab?.showResult ?? false}
                 />
               );
             })()}

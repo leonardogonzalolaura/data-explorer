@@ -15,6 +15,7 @@ export interface SqlEditorHandle {
   getResult: () => Dataset | null;
   getError: () => string | null;
   getEditorPct: () => number;
+  getShowResult: () => boolean;
 }
 
 interface SqlEditorProps {
@@ -23,12 +24,13 @@ interface SqlEditorProps {
   initialResult?: Dataset | null;
   initialError?: string | null;
   initialEditorPct?: number;
+  initialShowResult?: boolean;
   onResult?: (dataset: Dataset) => void;
 }
 
 const darkTheme = EditorView.theme(
   {
-    "&": { backgroundColor: "#0f172a", color: "#e2e8f0", fontSize: "14px" },
+    "&": { backgroundColor: "#0f172a", color: "#e2e8f0", fontSize: "14px", height: "100%" },
     ".cm-content": { fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace", padding: "16px 20px", lineHeight: "1.7", caretColor: "#60a5fa" },
     ".cm-cursor": { borderLeftColor: "#60a5fa", borderLeftWidth: "2px" },
     ".cm-gutters": { backgroundColor: "#0f172a", color: "#475569", border: "none", minWidth: "40px" },
@@ -43,7 +45,7 @@ const darkTheme = EditorView.theme(
   { dark: true }
 );
 
-const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function SqlEditor({ tables, initialSql, initialResult, initialError, initialEditorPct, onResult }, ref) {
+const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function SqlEditor({ tables, initialSql, initialResult, initialError, initialEditorPct, initialShowResult, onResult }, ref) {
   const editorRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -52,17 +54,20 @@ const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function SqlEditor
   const [error, setError] = useState<string | null>(initialError ?? null);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<Dataset | null>(initialResult ?? null);
-  const [editorPct, setEditorPct] = useState(initialEditorPct ?? 10);
+  const [editorPct, setEditorPct] = useState(initialEditorPct ?? 50);
+  const [showResult, setShowResult] = useState(initialShowResult ?? false);
   const dragging = useRef(false);
   const tablesRef = useRef(tables);
   tablesRef.current = tables;
   const resultRef = useRef<Dataset | null>(result);
   const errorRef = useRef<string | null>(error);
   const editorPctRef = useRef(editorPct);
+  const showResultRef = useRef(showResult);
 
   useEffect(() => { resultRef.current = result; }, [result]);
   useEffect(() => { errorRef.current = error; }, [error]);
   useEffect(() => { editorPctRef.current = editorPct; }, [editorPct]);
+  useEffect(() => { showResultRef.current = showResult; }, [showResult]);
 
   const runQuery = useCallback(async () => {
     if (runningRef.current || !viewRef.current) return;
@@ -73,6 +78,7 @@ const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function SqlEditor
     try {
       const dataset = await invoke<Dataset>("execute_sql", { sql: sqlText });
       setResult(dataset);
+      setShowResult(true);
       onResult?.(dataset);
     } catch (err) {
       setError(String(err));
@@ -109,6 +115,9 @@ const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function SqlEditor
     },
     getEditorPct() {
       return editorPctRef.current;
+    },
+    getShowResult() {
+      return showResultRef.current;
     },
   }), []);
 
@@ -189,7 +198,7 @@ const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function SqlEditor
     document.addEventListener("mouseup", onMouseUp);
   }, []);
 
-  const hasResults = result || error;
+  const hasResults = showResult && (result || error);
   const noTables = tables.length === 0;
 
   return (
@@ -230,6 +239,16 @@ const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function SqlEditor
             {/* Results header — with execute button */}
             <div className="flex items-center gap-2 px-4 py-1.5 bg-gray-900/20 border-b border-gray-800/40 shrink-0">
               <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wider">Resultados</span>
+              <button
+                onClick={() => setShowResult(false)}
+                className="p-0.5 rounded hover:bg-gray-700 text-gray-500 hover:text-gray-200 transition-colors"
+                title="Cerrar resultados"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
               {error && <span className="text-[11px] text-red-400">Error</span>}
               <div className="flex-1" />
               <span className="text-[10px] text-gray-600 font-mono">Ctrl+Enter</span>
