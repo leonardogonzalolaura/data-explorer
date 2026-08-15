@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { S3Credentials, S3Profile, S3Object } from "../types";
 import type { DataRepository } from "../services/dataRepository";
 
@@ -42,6 +42,7 @@ export default function S3ConnectionModal({ repository, onLoadS3, onClose }: S3C
   const [rightLoading, setRightLoading] = useState(false);
 
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const selectedScopeRef = useRef<{ bucket: string; profileName: string } | null>(null);
   const [loadingCount, setLoadingCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [showNewProfile, setShowNewProfile] = useState(false);
@@ -118,18 +119,15 @@ export default function S3ConnectionModal({ repository, onLoadS3, onClose }: S3C
   }, [expandedNodes, treeCache, fetchChildren]);
 
   const navigateTo = useCallback((bucket: string, prefix: string, profileName: string) => {
+    if (!selectedScopeRef.current || selectedScopeRef.current.bucket !== bucket || selectedScopeRef.current.profileName !== profileName) {
+      setSelectedKeys(new Set());
+      selectedScopeRef.current = null;
+    }
     setActiveBucket(bucket);
     setActivePrefix(prefix);
     setActiveProfileName(profileName);
     setPathInput(prefix);
     setPathEditing(false);
-    setSelectedKeys(new Set());
-  }, []);
-
-  const navigateToSilent = useCallback((bucket: string, prefix: string, profileName: string) => {
-    setActiveBucket(bucket);
-    setActivePrefix(prefix);
-    setActiveProfileName(profileName);
   }, []);
 
   const loadRightPanel = useCallback(async (bucket: string, prefix: string, profile: S3Profile) => {
@@ -156,6 +154,40 @@ export default function S3ConnectionModal({ repository, onLoadS3, onClose }: S3C
     }
   }, [navigateTo, getProfile, loadRightPanel]);
 
+  const navigateToPrefix = useCallback(async (bucket: string, prefix: string, profile: S3Profile | null) => {
+    if (!selectedScopeRef.current || selectedScopeRef.current.bucket !== bucket || selectedScopeRef.current.profileName !== profile?.name) {
+      setSelectedKeys(new Set());
+      selectedScopeRef.current = null;
+    }
+    setActiveBucket(bucket);
+    setActivePrefix(prefix);
+    setPathInput(prefix);
+    if (profile) {
+      await loadRightPanel(bucket, prefix, profile);
+      const nodeId = prefix ? folderNodeId(bucket, prefix) : bucketNodeId(bucket);
+      setExpandedNodes((prev) => new Set(prev).add(nodeId));
+      const ck = cacheKey(bucket, prefix);
+      if (!treeCache[ck]) {
+        await fetchChildren(bucket, prefix, profile);
+      }
+    }
+  }, [loadRightPanel, treeCache, fetchChildren]);
+
+  const goToBreadcrumb = useCallback(async (prefix: string) => {
+    const profile = getProfile(activeProfileName);
+    await navigateToPrefix(activeBucket, prefix, profile ?? null);
+  }, [activeBucket, activeProfileName, getProfile, navigateToPrefix]);
+
+  const goUp = useCallback(async () => {
+    if (!activePrefix || !activeBucket) return;
+    const trimmed = activePrefix.replace(/\/+$/, "");
+    const parts = trimmed.split("/");
+    parts.pop();
+    const parent = parts.length ? parts.join("/") + "/" : "";
+    const profile = getProfile(activeProfileName);
+    await navigateToPrefix(activeBucket, parent, profile ?? null);
+  }, [activePrefix, activeBucket, activeProfileName, getProfile, navigateToPrefix]);
+
   const handlePathSubmit = useCallback(async () => {
     if (!activeBucket) {
       // parse bucket from path input
@@ -163,30 +195,20 @@ export default function S3ConnectionModal({ repository, onLoadS3, onClose }: S3C
       const b = parts[0];
       const rest = parts.slice(1).join("/");
       if (b) {
-        setActiveBucket(b);
-        setActivePrefix(rest ? rest + (rest.endsWith("/") ? "" : "/") : "");
+        const prefix = rest ? rest + (rest.endsWith("/") ? "" : "/") : "";
+        const profile = getProfile(activeProfileName);
+        await navigateToPrefix(b, prefix, profile ?? null);
       }
-    }
-    if (activeBucket) {
+    } else {
       const prefix = pathInput.startsWith(activeBucket + "/")
         ? pathInput.slice(activeBucket.length + 1)
         : pathInput;
       const cleanPrefix = prefix && !prefix.endsWith("/") ? prefix + "/" : prefix;
-      setActivePrefix(cleanPrefix);
       const profile = getProfile(activeProfileName);
-      if (profile) {
-        await loadRightPanel(activeBucket, cleanPrefix, profile);
-        // Sync tree: ensure the node is expanded and cached
-        const nodeId = cleanPrefix ? folderNodeId(activeBucket, cleanPrefix) : bucketNodeId(activeBucket);
-        setExpandedNodes((prev) => new Set(prev).add(nodeId));
-        const ck = cacheKey(activeBucket, cleanPrefix);
-        if (!treeCache[ck]) {
-          await fetchChildren(activeBucket, cleanPrefix, profile);
-        }
-      }
+      await navigateToPrefix(activeBucket, cleanPrefix, profile ?? null);
     }
     setPathEditing(false);
-  }, [pathInput, activeBucket, activePrefix, activeProfileName, getProfile, loadRightPanel, treeCache, fetchChildren]);
+  }, [pathInput, activeBucket, activeProfileName, getProfile, navigateToPrefix]);
 
   const handleLoadFile = useCallback(async (obj: S3Object) => {
     if (obj.is_dir) return;
@@ -206,32 +228,49 @@ export default function S3ConnectionModal({ repository, onLoadS3, onClose }: S3C
     if (obj.is_dir) return;
     setSelectedKeys((prev) => {
       const next = new Set(prev);
-      if (next.has(obj.key)) next.delete(obj.key);
-      else next.add(obj.key);
+      if (next.has(obj.key)) {
+        next.delete(obj.key);
+      } else {
+        next.add(obj.key);
+        selectedScopeRef.current = { bucket: activeBucket, profileName: activeProfileName };
+      }
       return next;
     });
+  }, [activeBucket, activeProfileName]);
+
+  const toggleFileKey = useCallback((key: string) => {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
+  const clearSelection = useCallback(() => {
+    setSelectedKeys(new Set());
+    selectedScopeRef.current = null;
   }, []);
 
   const handleLoadSelected = useCallback(async () => {
     const profile = getProfile(activeProfileName);
     if (!profile || selectedKeys.size === 0) return;
     setError(null);
-    const selected = rightObjects.filter((o) => !o.is_dir && selectedKeys.has(o.key));
-    for (let i = 0; i < selected.length; i++) {
+    const keys = Array.from(selectedKeys).filter((k) => !k.endsWith("/"));
+    for (let i = 0; i < keys.length; i++) {
       setLoadingCount(i + 1);
-      const obj = selected[i];
-      const uri = `s3://${activeBucket}/${obj.key}`;
+      const uri = `s3://${activeBucket}/${keys[i]}`;
       try {
         await onLoadS3(uri, profile.credentials);
       } catch (err) {
-        setError(`Error en ${obj.key}: ${err}`);
+        setError(`Error en ${keys[i]}: ${err}`);
         break;
       }
     }
     setLoadingCount(0);
-    setSelectedKeys(new Set());
+    clearSelection();
     onClose();
-  }, [selectedKeys, rightObjects, activeBucket, activeProfileName, getProfile, onLoadS3, onClose]);
+  }, [selectedKeys, activeBucket, activeProfileName, getProfile, onLoadS3, onClose, clearSelection]);
 
   const addBucket = useCallback(async (profileName: string) => {
     if (!newBucketInput.trim()) return;
@@ -257,11 +296,12 @@ export default function S3ConnectionModal({ repository, onLoadS3, onClose }: S3C
         setActiveBucket("");
         setActivePrefix("");
         setRightObjects([]);
+        clearSelection();
       }
     } catch (err) {
       setError(String(err));
     }
-  }, [repository, activeProfileName]);
+  }, [repository, activeProfileName, clearSelection]);
 
   const copyPath = useCallback(async () => {
     if (!activeBucket) return;
@@ -438,7 +478,7 @@ export default function S3ConnectionModal({ repository, onLoadS3, onClose }: S3C
             </div>
           ) : (
             <div className="flex-1 flex flex-col overflow-hidden">
-              {/* Path bar with edit/copy */}
+              {/* Path bar with breadcrumb / edit / copy */}
               <div className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-800 shrink-0">
                 {pathEditing ? (
                   <input
@@ -450,9 +490,36 @@ export default function S3ConnectionModal({ repository, onLoadS3, onClose }: S3C
                     onKeyDown={(e) => { if (e.key === "Enter") handlePathSubmit(); if (e.key === "Escape") { setPathEditing(false); setPathInput(activePrefix); } }}
                   />
                 ) : (
-                  <span className="flex-1 text-[12px] text-gray-400 font-mono truncate">
-                    {activePrefix || <span className="text-gray-600">/</span>}
-                  </span>
+                  <div className="flex-1 flex items-center gap-0.5 min-w-0 overflow-hidden">
+                    <button
+                      onClick={goUp}
+                      disabled={!activePrefix}
+                      className="p-1 text-gray-500 hover:text-gray-300 disabled:opacity-30 transition-colors shrink-0"
+                      title="Subir carpeta"
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5" /><polyline points="5 12 12 5 19 12" /></svg>
+                    </button>
+                    <div className="flex items-center gap-0.5 min-w-0 overflow-x-auto">
+                      {activePrefix ? activePrefix.split("/").filter(Boolean).map((seg, i, arr) => {
+                        const isLast = i === arr.length - 1;
+                        const target = arr.slice(0, i + 1).join("/") + "/";
+                        return (
+                          <span key={i} className="flex items-center gap-0.5 shrink-0">
+                            <button
+                              onClick={() => { if (!isLast) goToBreadcrumb(target); }}
+                              disabled={isLast}
+                              className={`px-1 py-0.5 rounded text-[12px] font-mono transition-colors ${isLast ? "text-gray-200" : "text-gray-500 hover:text-blue-400 hover:bg-gray-800/50"}`}
+                            >
+                              {seg}
+                            </button>
+                            {!isLast && <span className="text-gray-700">/</span>}
+                          </span>
+                        );
+                      }) : (
+                        <span className="text-[12px] text-gray-600 font-mono">/</span>
+                      )}
+                    </div>
+                  </div>
                 )}
                 <button onClick={() => { if (pathEditing) { handlePathSubmit(); } else { setPathInput(activePrefix); setPathEditing(true); } }} className="p-1 text-gray-500 hover:text-gray-300 transition-colors" title={pathEditing ? "Confirmar" : "Editar ruta"}>
                   {pathEditing ? (
@@ -473,19 +540,42 @@ export default function S3ConnectionModal({ repository, onLoadS3, onClose }: S3C
 
               {/* Batch load bar */}
               {selectedKeys.size > 0 && (
-                <div className="flex items-center gap-3 px-4 py-2 border-b border-gray-800 shrink-0 bg-gray-900/50">
-                  <span className="text-[11px] text-gray-400">{selectedKeys.size} archivo(s) seleccionado(s)</span>
-                  <div className="flex-1" />
-                  {loadingCount > 0 && (
-                    <span className="text-[11px] text-blue-400 animate-pulse">Cargando {loadingCount}/{selectedKeys.size}...</span>
-                  )}
-                  <button
-                    onClick={handleLoadSelected}
-                    disabled={loadingCount > 0}
-                    className="px-3 py-1 text-[11px] font-medium rounded bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 transition-colors"
-                  >
-                    {loadingCount > 0 ? "Cargando..." : `Cargar ${selectedKeys.size}`}
-                  </button>
+                <div className="px-4 py-2 border-b border-gray-800 shrink-0 bg-gray-900/50 space-y-2">
+                  <div className="flex items-center gap-3">
+                    <span className="text-[11px] text-gray-400">{selectedKeys.size} archivo(s) seleccionado(s)</span>
+                    <div className="flex-1" />
+                    {loadingCount > 0 && (
+                      <span className="text-[11px] text-blue-400 animate-pulse">Cargando {loadingCount}/{selectedKeys.size}...</span>
+                    )}
+                    <button
+                      onClick={clearSelection}
+                      disabled={loadingCount > 0}
+                      className="px-2 py-1 text-[11px] rounded bg-gray-800 hover:bg-gray-700 text-gray-400 disabled:opacity-50 transition-colors"
+                      title="Limpiar selección"
+                    >
+                      Limpiar
+                    </button>
+                    <button
+                      onClick={handleLoadSelected}
+                      disabled={loadingCount > 0}
+                      className="px-3 py-1 text-[11px] font-medium rounded bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 transition-colors"
+                    >
+                      {loadingCount > 0 ? "Cargando..." : `Cargar ${selectedKeys.size}`}
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 max-h-16 overflow-auto">
+                    {Array.from(selectedKeys).map((key) => {
+                      const name = key.split("/").filter(Boolean).pop() ?? key;
+                      return (
+                        <span key={key} title={key} className="group inline-flex items-center gap-1 px-2 py-0.5 rounded bg-gray-800/80 text-[10px] text-gray-300 font-mono">
+                          {name}
+                          <button onClick={() => toggleFileKey(key)} className="text-gray-500 hover:text-red-400 transition-colors" title="Quitar de la selección">
+                            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 
@@ -499,19 +589,8 @@ export default function S3ConnectionModal({ repository, onLoadS3, onClose }: S3C
                 {!rightLoading && rightObjects.map((obj) => (
                   obj.is_dir ? (
                     <button key={obj.key} onClick={async () => {
-                      navigateToSilent(activeBucket, obj.key, activeProfileName);
-                      setRightLoading(true);
                       const profile = getProfile(activeProfileName);
-                      if (profile) {
-                        const objs = await repository.listS3Objects(activeBucket, obj.key, profile.credentials);
-                        setRightObjects(objs);
-                        setRightLoading(false);
-                        // Also cache in tree
-                        const ck = cacheKey(activeBucket, obj.key);
-                        setTreeCache((prev) => ({ ...prev, [ck]: objs }));
-                        const nodeId = folderNodeId(activeBucket, obj.key);
-                        setExpandedNodes((prev) => new Set(prev).add(nodeId));
-                      }
+                      await navigateToPrefix(activeBucket, obj.key, profile ?? null);
                     }} className="flex items-center gap-2 w-full text-left text-[11px] px-2 py-1.5 rounded text-gray-400 hover:text-gray-200 hover:bg-gray-800/50 transition-colors">
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
